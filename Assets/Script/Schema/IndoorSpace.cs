@@ -13,8 +13,10 @@ namespace Map {
         private List<CellBoundary> _cellBoundaries = new List<CellBoundary>();
         private List<Layer> _layers = new List<Layer>();
         private List<Container> _containers = new List<Container>();
-        [JsonProperty("properties")]
 
+        public List<PickingPoint> _pickingPoints { get; private set; }
+
+        [JsonProperty("properties")]
         public Dictionary<string, object> Properties { get => _properties; set => _properties = value; }
         [JsonProperty("CellSpaces")]
         public List<CellSpace> CellSpaces { get => _cellSpaces; }
@@ -30,6 +32,7 @@ namespace Map {
             if (_cellSpaces.Any(c => c.Id == cellSpace.Id))
                 throw new System.Exception("CellSpace id already exists");
             _cellSpaces.Add(cellSpace);
+            AddPickingPoint(cellSpace);
         }
 
         public void AddCellBoundary(CellBoundary cellBoundary)
@@ -49,6 +52,19 @@ namespace Map {
         public void AddContainer(Container container)
         {
             _containers.Add(container);
+        }
+
+        public void AddPickingPoint(CellSpace cellSpace)
+        {
+            if (cellSpace.IsPickingPoint())
+            {
+                List<string> boundings = cellSpace.GetBoundings();
+                if (boundings != null)
+                {
+                    PickingPoint pickingPoint = new PickingPoint(cellSpace.Id, boundings);
+                    _pickingPoints.Add(pickingPoint);
+                }
+            }
         }
 
         public CellSpace GetCellFromId(string id)

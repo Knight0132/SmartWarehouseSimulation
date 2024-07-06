@@ -1,4 +1,5 @@
 using System.Collections;
+using System.Linq;
 using UnityEngine;
 using Newtonsoft.Json;
 using NetTopologySuite.Geometries;
@@ -21,6 +22,43 @@ namespace Map {
             this.Space = space;
             this.Node = node;
         }
+
+        public bool IsPickingPoint()
+        {
+            if (Properties.TryGetValue("functions", out object functionsObj) && functionsObj is List<object> functions)
+            {
+                foreach (var functionObj in functions)
+                {
+                    if (functionObj is Dictionary<string, object> function && function.TryGetValue("type", out object typeObj) && typeObj as string == "pickingPoint")
+                    {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+
+        public List<string> GetBoundings()
+        {
+            if (Properties.TryGetValue("functions", out object functionsObj) && functionsObj is List<object> functions)
+            {
+                foreach (var functionObj in functions)
+                {
+                    if (functionObj is Dictionary<string, object> function && function.TryGetValue("type", out object typeObj) && typeObj as string == "picking point")
+                    {
+                        if (function.TryGetValue("features", out object featuresObj) && featuresObj is Dictionary<string, object> features)
+                        {
+                            if (features.TryGetValue("boundings", out object boundingObj) && boundingObj is List<object> boundings)
+                            {
+                                return boundings.Cast<string>().ToList();
+                            }
+                        }
+                    }
+                }
+            }
+            return null;
+        }
+
 
         public string ToJson()
         {

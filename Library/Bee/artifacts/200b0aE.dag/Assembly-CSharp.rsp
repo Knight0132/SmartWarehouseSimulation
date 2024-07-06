@@ -349,6 +349,7 @@
 -r:"Library/Bee/artifacts/200b0aE.dag/UnityEngine.UI.ref.dll"
 "Assets/Script/Map/MapLoader.cs"
 "Assets/Script/Map/MapVisualizer.cs"
+"Assets/Script/Order/OrderModule.cs"
 "Assets/Script/PathPlanning/AstarBasic_Distance.cs"
 "Assets/Script/PathPlanning/AstarBasic_Time.cs"
 "Assets/Script/PathPlanning/Astar_Traffic_Completed.cs"
@@ -363,6 +364,7 @@
 "Assets/Script/Schema/Hypergraph.cs"
 "Assets/Script/Schema/IndoorSpace.cs"
 "Assets/Script/Schema/Layer.cs"
+"Assets/Script/Schema/PickingPoint.cs"
 "Assets/Script/Schema/RLineGroup.cs"
 "Assets/Script/Schema/RoutePoint.cs"
 -langversion:9.0
