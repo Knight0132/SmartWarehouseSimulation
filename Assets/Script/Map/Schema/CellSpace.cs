@@ -55,7 +55,7 @@ namespace Map {
 
         public bool IsNavigable()
         {
-            if (Properties.TryGetValue("navigable", out object propertiesObj) && propertiesObj as bool == true)
+            if (Properties.TryGetValue("navigable", out object propertiesObj) && propertiesObj is bool navigable && navigable)
             {
                 return true;
             }

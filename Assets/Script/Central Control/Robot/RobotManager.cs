@@ -8,41 +8,51 @@ namespace CentralControl
     public class RobotManager : MonoBehaviour
     {
         public GameObject robotPrefab;
-        public Transform robotContainer;
-        public List<RobotController> robots = new List<RobotController>();
         public int numberOfRobots = 10;
+        public MapLoader mapLoader;
         public IndoorSpace indoorSpace;
+        public float width, length;
+        public Graph graph;
+        private List<RobotController> robots = new List<RobotController>();
 
-        public void start()
+        void Start()
         {
+            indoorSpace = mapLoader.LoadJson();
+            width = mapLoader.width;
+            length = mapLoader.length;
+            graph = mapLoader.GenerateRouteGraph(indoorSpace); 
             InitializeRobots();
         } 
 
         void Update()
         {
-            UpdateRobotPositions();
+            CheckRobotStatus();
         }
 
         private void InitializeRobots()
         {
             for (int i = 0; i < numberOfRobots; i++)
             {
-                GameObject robotObj = Instantiate(robotPrefab, new Vector3(i * 2.0f, 0, 0), Quaternion.identity);
-                RobotController robot = robotObj.GetComponent<RobotController>();
-                if (robot != null)
+                Vector3 position = new Vector3(Random.Range(0, width), 0, Random.Range(0, length));
+                CellSpace cellSpace = indoorSpace.GetCellSpaceFromCoordinates(position);
+                if (cellSpace != null && cellSpace.IsNavigable())
                 {
-                    robot.InitializeRobot();
+                    GameObject robotObj = Instantiate(robotPrefab, position, Quaternion.identity);
+                    RobotController robot = robotObj.GetComponent<RobotController>();
+                    if (robot != null)
+                    {
+                        robot.InitializeRobot(i + 1);
+                        robots.Add(robot);
+                    }
                 }
             }
         }
 
-        // 获取所有处于空闲状态的机器人
         public List<RobotController> GetFreeRobots()
         {
             return robots.Where(robot => robot.IsFree).ToList();
         }
 
-        // 找到最接近指定位置的空闲机器人
         public RobotController GetClosestFreeRobot(Vector3 position)
         {
             return robots.Where(robot => robot.IsFree)
@@ -50,14 +60,13 @@ namespace CentralControl
                         .FirstOrDefault();
         }
 
-        // 更新所有机器人的位置
-        public void UpdateRobotPositions()
+        private void CheckRobotStatus()
         {
             foreach (var robot in robots)
             {
-                if (robot.IsMoving)  // 假设 IsMoving 是 RobotController 中的一个属性
+                if (!robot.IsFree)
                 {
-                    robot.MoveTowardsTarget();
+                    Debug.Log("Robot " + robot.Id + " is active.");
                 }
             }
         }

@@ -12,30 +12,24 @@ namespace CentralControl
     {
         public MapLoader mapLoader;
         public Transform targetIndicator;
-        public int numberOfRobots = 5;
         public float defaultSpeed = 5.0f;
         public SearchAlgorithm selectedAlgorithm = SearchAlgorithm.Astar_Traffic_Completed;
+        public int Id { get; private set; }
 
-        private Vector3 currentTarget;
-        private int pathIndex = 0;
+        // private Vector3 currentTarget;
+        // private int pathIndex = 0;
+        // private List<Tuple<ConnectionPoint, float>> path = new List<Tuple<ConnectionPoint, float>>();
+        // private CellSpace cellSpace;
+        // private RoutePoint routePoint;
+        // private ConnectionPoint connectionPoint;
+        // private Layer layer;
+        // private float startTime;
+        // private float elapsedTime;
+        // private float currentSpeed;
         private bool isMoving = false;
-        private List<Tuple<ConnectionPoint, float>> path = new List<Tuple<ConnectionPoint, float>>();
-        private CellSpace cellSpace;
-        private RoutePoint routePoint;
-        private ConnectionPoint connectionPoint;
-        private Layer layer;
         private Graph graph;
         private IndoorSpace indoorSpace;
-        private float startTime;
-        private float elapsedTime;
-        private float currentSpeed;
-        private Queue<Order> orderQueue = new Queue<Order>();
-
-
-        void Start()
-        {
-            InitializeRobot();
-        }
+        private Queue<Order> ordersQueue = new Queue<Order>();
 
         void Update()
         {
@@ -45,8 +39,9 @@ namespace CentralControl
             }
         }
 
-        public void InitializeRobot()
+        public void InitializeRobot(int id)
         {
+            this.Id = id;
             indoorSpace = mapLoader.LoadJson();
             graph = mapLoader.GenerateRouteGraph(indoorSpace); 
         }
@@ -74,23 +69,31 @@ namespace CentralControl
             Vector3 targetPosition = order.Destination;
             targetIndicator.position = targetPosition;
             isMoving = true;
-            MoveTowards(targetPosition);
+            StartCoroutine(MoveToPosition(targetPosition, order.ExecutionTime));
         }
 
-        private void MoveTowards(Vector3 target)
-        {
-            StartCoroutine(MoveToPosition(target));
-        }
-
-        IEnumerator MoveToPosition(Vector3 target)
+        IEnumerator MoveToPosition(Vector3 target, float executionTime)
         {
             while (Vector3.Distance(transform.position, target) > 0.1f)
             {
                 transform.position = Vector3.MoveTowards(transform.position, target, defaultSpeed * Time.deltaTime);
                 yield return null;
             }
+            
+            yield return new WaitForSeconds(executionTime);
+            
             isMoving = false;
-            Debug.Log("Order completed at: " + target);
+            Debug.Log("Order completed and executed for " + executionTime + " seconds at " + target);
+        }
+
+        public bool IsFree
+        {
+            get { return !isMoving && ordersQueue.Count == 0; }
+        }
+
+        public bool IsMoving
+        {
+            get { return isMoving; }
         }
 
         // public void AssignOrder(Order order)

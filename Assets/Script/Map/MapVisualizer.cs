@@ -9,10 +9,7 @@ public class MapVisualizer : MonoBehaviour
 {
     public Material navigablePolygonMaterial;
     public Material nonNavigablePolygonMaterial;
-    public Material pathMaterial;
     public GameObject nonNavigablePrefab;
-    public GameObject startPointPrefab;
-    public GameObject endPointPrefab;
     public GameObject planePrefab;
 
     private GameObject currentStartPointObject;
