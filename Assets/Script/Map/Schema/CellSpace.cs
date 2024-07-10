@@ -23,6 +23,21 @@ namespace Map {
             this.Node = node;
         }
 
+        public bool IsBusinesspoint()
+        {
+            if (Properties.TryGetValue("functions", out object functionsObj) && functionsObj is List<object> functions)
+            {
+                foreach (var functionObj in functions)
+                {
+                    if (functionObj is Dictionary<string, object> function && function.TryGetValue("type", out object typeObj) && typeObj as string == "shelf")
+                    {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+
         public bool IsPickingPoint()
         {
             if (Properties.TryGetValue("functions", out object functionsObj) && functionsObj is List<object> functions)
@@ -34,6 +49,15 @@ namespace Map {
                         return true;
                     }
                 }
+            }
+            return false;
+        }
+
+        public bool IsNavigable()
+        {
+            if (Properties.TryGetValue("navigable", out object propertiesObj) && propertiesObj as bool == true)
+            {
+                return true;
             }
             return false;
         }

@@ -351,6 +351,7 @@
 "Assets/Script/Central Control/Order/Order.cs"
 "Assets/Script/Central Control/Order/OrderManager.cs"
 "Assets/Script/Central Control/Robot/RobotController.cs"
+"Assets/Script/Central Control/Robot/RobotManager.cs"
 "Assets/Script/GameManager.cs"
 "Assets/Script/Map/MapLoader.cs"
 "Assets/Script/Map/MapVisualizer.cs"

@@ -761,3 +761,43 @@ AssetImportParameters requested are different than current active one (requested
   custom:container-demuxer-ogg: 62fdf1f143b41e24485cea50d1cbac27 -> 
   custom:video-decoder-webm-vp8: 9c59270c3fd7afecdb556c50c9e8de78 -> 
   custom:audio-decoder-ogg-vorbis: bf7c407c2cedff20999df2af8eb42d56 -> 
+========================================================================
+Received Import Request.
+  Time since last request: 19532.568967 seconds.
+  path: Assets/Script/Central Control/Robot/RobotController.cs
+  artifactKey: Guid(185c32b34820c49dda3468a2c8a0b973) Importer(815301076,1909f56bfc062723c751e8b465ee728b)
+Number of updated assets reloaded before import = 0
+Start importing Assets/Script/Central Control/Robot/RobotController.cs using Guid(185c32b34820c49dda3468a2c8a0b973) Importer(815301076,1909f56bfc062723c751e8b465ee728b)  -> (artifact id: 'ec9c5de614faee30a119cd55ea8695c7') in 0.022163 seconds 
+Number of asset objects unloaded after import = 0
+========================================================================
+Received Import Request.
+  Time since last request: 14.413463 seconds.
+  path: Assets/Script/Central Control/Robot/RobotManager.cs
+  artifactKey: Guid(7998438430aea46c7a90189ad7ccb6e8) Importer(815301076,1909f56bfc062723c751e8b465ee728b)
+Number of updated assets reloaded before import = 0
+Start importing Assets/Script/Central Control/Robot/RobotManager.cs using Guid(7998438430aea46c7a90189ad7ccb6e8) Importer(815301076,1909f56bfc062723c751e8b465ee728b)  -> (artifact id: '706a69168d334213c0df999ebeb165cc') in 0.000687 seconds 
+Number of asset objects unloaded after import = 0
+========================================================================
+Received Import Request.
+  Time since last request: 90413.273555 seconds.
+  path: Assets/Script/Central Control/Robot/RobotManager.cs
+  artifactKey: Guid(7998438430aea46c7a90189ad7ccb6e8) Importer(815301076,1909f56bfc062723c751e8b465ee728b)
+Number of updated assets reloaded before import = 0
+Start importing Assets/Script/Central Control/Robot/RobotManager.cs using Guid(7998438430aea46c7a90189ad7ccb6e8) Importer(815301076,1909f56bfc062723c751e8b465ee728b)  -> (artifact id: '48b9b53b2f9c79b28dab7a947f33379f') in 0.005991 seconds 
+Number of asset objects unloaded after import = 0
+========================================================================
+Received Import Request.
+  Time since last request: 106333.006242 seconds.
+  path: Assets/Script/Central Control/Robot/RobotManager.cs
+  artifactKey: Guid(7998438430aea46c7a90189ad7ccb6e8) Importer(815301076,1909f56bfc062723c751e8b465ee728b)
+Number of updated assets reloaded before import = 0
+Start importing Assets/Script/Central Control/Robot/RobotManager.cs using Guid(7998438430aea46c7a90189ad7ccb6e8) Importer(815301076,1909f56bfc062723c751e8b465ee728b)  -> (artifact id: '365e98a0db653bf0016ee1f6291bd282') in 0.004220 seconds 
+Number of asset objects unloaded after import = 0
+========================================================================
+Received Import Request.
+  Time since last request: 33.970048 seconds.
+  path: Assets/Script/Central Control/Robot/RobotManager.cs
+  artifactKey: Guid(7998438430aea46c7a90189ad7ccb6e8) Importer(815301076,1909f56bfc062723c751e8b465ee728b)
+Number of updated assets reloaded before import = 0
+Start importing Assets/Script/Central Control/Robot/RobotManager.cs using Guid(7998438430aea46c7a90189ad7ccb6e8) Importer(815301076,1909f56bfc062723c751e8b465ee728b)  -> (artifact id: '96d5393d7fd5f0d9eae744201aec9e82') in 0.001439 seconds 
+Number of asset objects unloaded after import = 0

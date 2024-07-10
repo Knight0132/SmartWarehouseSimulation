@@ -4,13 +4,13 @@ using UnityEngine;
 
 namespace CentralControl
 {
-    public class OrderManager
+    public class OrderManager: MonoBehaviour
     {
         private List<Order> orders = new List<Order>();
 
-        public void AddOrder(string id, Vector3 coordinates)
+        public void AddOrder(string id, Vector3 coordinates, float executionTime)
         {
-            Order newOrder = new Order(id, coordinates);
+            Order newOrder = new Order(id, coordinates, executionTime);
             orders.Add(newOrder);
             Debug.Log($"Added new order: {id} at {coordinates}");
         }
@@ -23,6 +23,16 @@ namespace CentralControl
         public Order GetOrderById(string id)
         {
             return orders.FirstOrDefault(o => o.Id == id);
+        }
+
+        public Order GetNextOrder()
+        {
+            var order = orders.OrderBy(o => o.Priority).FirstOrDefault();
+            if (order != null)
+            {
+                orders.Remove(order);
+            }
+            return order;
         }
     }
 }

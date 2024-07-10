@@ -1,21 +1,23 @@
 using System.Collections.Generic;
 using System.Collections;
 using System.Linq;
+using NetTopologySuite.Geometries;
 using UnityEngine;
+using Map;
 
 namespace CentralControl
 {
-    public class CentralControl
+    public class CentralController: MonoBehaviour
     {
-        private OrderManager orderManager;
-        private RobotManager robotManager;
-        private float interval = 5f;
-        private int orderCount = 10;
+        public OrderManager orderManager;
+        public RobotManager robotManager;
+        public IndoorSpace indoorSpaceProvider;
+        public float interval = 5f;
+        public int orderCount = 10;
 
-        public CentralControl(OrderManager orderManager, RobotManager robotManager)
+        public void Start()
         {
-            this.orderManager = orderManager;
-            this.robotManager = robotManager;
+            StartCoroutine(StartGeneratingOrders());
         }
 
         // 设置生成订单的参数
@@ -36,14 +38,28 @@ namespace CentralControl
         }
 
         // 生成随机订单
-        private void GenerateRandomOrders()
+        private void GenerateRandomOrders(IndoorSpace indoorSpaceProvider)
         {
-            for (int i = 0; i < orderCount; i++)
+            int attempts = 0;
+            int maxAttempts = orderCount * 10;
+            int i = 0;
+            while (i < orderCount && attempts < maxAttempts)
             {
                 string id = System.Guid.NewGuid().ToString();
                 Vector3 coordinates = new Vector3(Random.Range(0, 100), 0, Random.Range(0, 100));
-                orderManager.AddOrder(id, coordinates);
-                Debug.Log($"Generated order: {id} at {coordinates}");
+                CellSpace cellSpace = indoorSpaceProvider.GetCellSpaceFromCoordinates(coordinates);
+                float executionTime = Random.Range(0f, 30f);
+                if (cellSpace.IsBusinesspoint())
+                {
+                    orderManager.AddOrder(id, coordinates, executionTime);
+                    Debug.Log($"Generated order: {id} at {coordinates} lasting {executionTime} seconds");
+                    i++;
+                }
+                attempts++;
+            }
+            if (attempts >= maxAttempts)
+            {
+                Debug.Log("Reached maximum attempts without fulfilling order count.");
             }
         }
 
