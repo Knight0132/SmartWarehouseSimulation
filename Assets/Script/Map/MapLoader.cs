@@ -110,6 +110,8 @@ namespace Map {
                 Debug.LogError("Error during JSON deserialization: " + ex.Message);
             }
 
+            indoorSpace.LoadProperties();
+
             return indoorSpace;
         }
 

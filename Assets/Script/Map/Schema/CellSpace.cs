@@ -44,7 +44,7 @@ namespace Map {
             {
                 foreach (var functionObj in functions)
                 {
-                    if (functionObj is Dictionary<string, object> function && function.TryGetValue("type", out object typeObj) && typeObj as string == "pickingPoint")
+                    if (functionObj is Dictionary<string, object> function && function.TryGetValue("type", out object typeObj) && typeObj as string == "picking Point")
                     {
                         return true;
                     }

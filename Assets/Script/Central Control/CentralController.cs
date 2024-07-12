@@ -45,24 +45,16 @@ namespace CentralControl
             while (i < orderCount && attempts < maxAttempts)
             {
                 string id = System.Guid.NewGuid().ToString();
-                Vector3 coordinates = new Vector3(Random.Range(0, width), 0, Random.Range(0, length));
-                CellSpace cellSpace = indoorSpaceProvider.GetCellSpaceFromCoordinates(coordinates);
+                int randomIndex = (int)Random.Range(0, indoorSpaceProvider.BusinessPoints.Count - 1);
+                
+                Debug.Log($"Generated randomIndex: {randomIndex} / {indoorSpaceProvider.BusinessPoints.Count}");
+                CellSpace cellSpace = indoorSpaceProvider.BusinessPoints[randomIndex];
                 float executionTime = Random.Range(0f, 30f);
-                if (cellSpace.IsBusinesspoint())
-                {
-                    orderManager.AddOrder(id, coordinates, executionTime);
-                    Debug.Log($"Generated order: {id} at {coordinates} lasting {executionTime} seconds");
-                    i++;
-                }
-                attempts++;
-            }
-            if (attempts >= maxAttempts)
-            {
-                Debug.Log("Reached maximum attempts without fulfilling order count.");
+                Debug.Log($"Generated order: {id} in {cellSpace.Id} lasting {executionTime} seconds");
             }
         }
 
-        public void DispatchOrders()
+        private void DispatchOrders()
         {
             foreach (var order in orderManager.GetAllOrders())
             {

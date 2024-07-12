@@ -14,7 +14,8 @@ namespace Map {
         private List<Layer> _layers = new List<Layer>();
         private List<Container> _containers = new List<Container>();
 
-        public List<PickingPoint> _pickingPoints { get; private set; }
+        private List<PickingPoint> _pickingPoints = new List<PickingPoint>();
+        private List<CellSpace> _businessPoints = new List<CellSpace>();
 
         [JsonProperty("properties")]
         public Dictionary<string, object> Properties { get => _properties; set => _properties = value; }
@@ -27,12 +28,14 @@ namespace Map {
         [JsonProperty("Containers")]
         public List<Container> Containers { get => _containers; }
 
+        public List<PickingPoint> PickingPoints { get => _pickingPoints; }
+        public List<CellSpace> BusinessPoints { get => _businessPoints; }
+
         public void AddCellSpace(CellSpace cellSpace)
         {
             if (_cellSpaces.Any(c => c.Id == cellSpace.Id))
                 throw new System.Exception("CellSpace id already exists");
             _cellSpaces.Add(cellSpace);
-            AddPickingPoint(cellSpace);
         }
 
         public void AddCellBoundary(CellBoundary cellBoundary)
@@ -67,13 +70,29 @@ namespace Map {
             }
         }
 
+        public void AddBusinessPoint(CellSpace cellSpace)
+        {
+            if (cellSpace.IsBusinesspoint())
+            {
+                _businessPoints.Add(cellSpace);
+            }
+        }
+
+        public void LoadProperties()
+        {
+            foreach (var cellSpace in _cellSpaces)
+            {
+                AddPickingPoint(cellSpace);
+                AddBusinessPoint(cellSpace);
+            }
+        }
+
         public CellSpace GetCellFromId(string id)
         {
             foreach (var cellSpace in _cellSpaces)
             {
                 if (cellSpace.Id == id)
                 {
-                    // Debug.Log(cellSpace.ToJson());
                     return cellSpace;
                 }
             }
@@ -152,13 +171,10 @@ namespace Map {
         {
             foreach (var cellBoundary in _cellBoundaries)
             {
-                // Debug.Log(sequence);
                 if (sequence)
                 {
                     if (cellBoundary.Source == cellSpaceId)
                     {
-                        // Debug.Log("ConnectionPoint matching: " + cellBoundary.Source + " " + cellSpaceId);
-                        // Debug.Log(cellBoundary.ConvertToConnectionPoint().ToJson());
                         return cellBoundary.ConvertToConnectionPoint();
                     }
                 }
@@ -166,7 +182,6 @@ namespace Map {
                 {
                     if (cellBoundary.Target == cellSpaceId)
                     {
-                        // Debug.Log("ConnectionPoint matching: " + cellBoundary.Target + " " + cellSpaceId);
                         return cellBoundary.ConvertToConnectionPoint();
                     }
                 }
