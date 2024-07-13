@@ -1,3 +1,4 @@
+using System;
 using System.Collections;
 using System.Linq;
 using UnityEngine;
@@ -44,12 +45,21 @@ namespace Map {
             {
                 foreach (var functionObj in functions)
                 {
-                    if (functionObj is Dictionary<string, object> function && function.TryGetValue("type", out object typeObj) && typeObj as string == "picking Point")
+                    if (functionObj is Dictionary<string, object> function && function.TryGetValue("type", out object typeObj) && typeObj is string typeString)
                     {
-                        return true;
+                        Console.WriteLine($"Debug: typeString before trim = '{typeString}'"); // 打印调试信息
+                        typeString = typeString.Trim(); // 修剪字符串
+                        Console.WriteLine($"Debug: typeString after trim = '{typeString}'"); // 打印调试信息
+        
+                        if (string.Equals(typeString, "picking point", StringComparison.OrdinalIgnoreCase))
+                        {
+                            Console.WriteLine("Debug: Match found"); // 打印匹配信息
+                            return true;
+                        }
                     }
                 }
             }
+            Console.WriteLine("Debug: No match found"); // 如果没有找到匹配项，打印此信息
             return false;
         }
 
