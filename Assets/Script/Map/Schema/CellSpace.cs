@@ -5,6 +5,7 @@ using UnityEngine;
 using Newtonsoft.Json;
 using NetTopologySuite.Geometries;
 using System.Collections.Generic;
+using Newtonsoft.Json.Linq;
 
 namespace Map {
     public class CellSpace
@@ -24,43 +25,26 @@ namespace Map {
             this.Node = node;
         }
 
-        public bool IsBusinesspoint()
-        {
-            if (Properties.TryGetValue("functions", out object functionsObj) && functionsObj is List<object> functions)
-            {
-                foreach (var functionObj in functions)
-                {
-                    if (functionObj is Dictionary<string, object> function && function.TryGetValue("type", out object typeObj) && typeObj as string == "shelf")
-                    {
-                        return true;
-                    }
+        private bool HasFunctionOfType(string type) {
+            if (Properties.TryGetValue("functions", out object functionsObj)) {
+                Debug.Log($"Functions are {functionsObj.GetType()}");
+
+                if (functionsObj is JArray functionsJArray) {
+                    var functions = functionsJArray.ToObject<List<Dictionary<string, object>>>();
+                    return functions.Any(function => function.TryGetValue("type", out object typeObj) &&
+                                                    typeObj is string typeString &&
+                                                    string.Equals(typeString, type, StringComparison.OrdinalIgnoreCase));
                 }
             }
             return false;
         }
 
-        public bool IsPickingPoint()
-        {
-            if (Properties.TryGetValue("functions", out object functionsObj) && functionsObj is List<object> functions)
-            {
-                foreach (var functionObj in functions)
-                {
-                    if (functionObj is Dictionary<string, object> function && function.TryGetValue("type", out object typeObj) && typeObj is string typeString)
-                    {
-                        Console.WriteLine($"Debug: typeString before trim = '{typeString}'"); // 打印调试信息
-                        typeString = typeString.Trim(); // 修剪字符串
-                        Console.WriteLine($"Debug: typeString after trim = '{typeString}'"); // 打印调试信息
-        
-                        if (string.Equals(typeString, "picking point", StringComparison.OrdinalIgnoreCase))
-                        {
-                            Console.WriteLine("Debug: Match found"); // 打印匹配信息
-                            return true;
-                        }
-                    }
-                }
-            }
-            Console.WriteLine("Debug: No match found"); // 如果没有找到匹配项，打印此信息
-            return false;
+        public bool IsBusinesspoint() {
+            return HasFunctionOfType("shelf");
+        }
+
+        public bool IsPickingPoint() {
+            return HasFunctionOfType("picking point");
         }
 
         public bool IsNavigable()

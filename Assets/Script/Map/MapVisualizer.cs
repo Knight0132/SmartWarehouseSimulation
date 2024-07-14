@@ -29,7 +29,7 @@ public class MapVisualizer : MonoBehaviour
         GameObject polygonObject = Instantiate(planePrefab, Vector3.zero, Quaternion.identity, transform);
         polygonObject.name = "Polygon";
         polygonObject.transform.position = new Vector3((float)polygon.Centroid.X, 0, (float)polygon.Centroid.Y);
-        polygonObject.transform.localScale = new Vector3(0.1f, 1f, 0.1f); // Adjust based on actual size requirements
+        polygonObject.transform.localScale = new Vector3(0.1f, 1f, 0.1f);
 
         MeshRenderer renderer = polygonObject.GetComponent<MeshRenderer>();
         renderer.material = navigation ? navigablePolygonMaterial : nonNavigablePolygonMaterial;
@@ -39,7 +39,7 @@ public class MapVisualizer : MonoBehaviour
             GameObject shelfObject = Instantiate(nonNavigablePrefab, Vector3.zero, Quaternion.identity, transform);
             shelfObject.name = "Shelf";
             shelfObject.transform.position = new Vector3((float)polygon.Centroid.X, 0.5f, (float)polygon.Centroid.Y);
-            shelfObject.transform.localScale = new Vector3(1f, 1f, 1f); // Adjust based on actual size requirements
+            shelfObject.transform.localScale = new Vector3(1f, 1f, 1f);
         }
     }
 }

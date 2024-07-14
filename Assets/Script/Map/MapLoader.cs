@@ -103,14 +103,16 @@ namespace Map {
             try
             {
                 indoorSpace = JsonConvert.DeserializeObject<IndoorSpace>(jsonFile.text, settings);
+                if (indoorSpace != null)
+                {
+                    indoorSpace.LoadProperties();
+                }
                 Debug.Log("JSON Deserialized successfully");
             }
             catch (Exception ex)
             {
                 Debug.LogError("Error during JSON deserialization: " + ex.Message);
             }
-
-            indoorSpace.LoadProperties();
 
             return indoorSpace;
         }

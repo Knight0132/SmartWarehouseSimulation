@@ -86,8 +86,7 @@ namespace Map {
                 AddPickingPoint(cellSpace);
                 AddBusinessPoint(cellSpace);
             }
-            // Debug.Log($"PickingPoints: {_pickingPoints.Count}");
-            // Debug.Log($"BusinessPoints: {_businessPoints.Count}");
+            Debug.Log($"Picking Points: {PickingPoints.Count}, Business Points: {BusinessPoints.Count}");
         }
 
         public CellSpace GetCellFromId(string id)
