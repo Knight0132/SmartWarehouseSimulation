@@ -67,7 +67,6 @@ namespace Map {
                     PickingPoint pickingPoint = new PickingPoint(cellSpace.Id, boundings);
                     _pickingPoints.Add(pickingPoint);
                 }
-                Debug.Log($"CellSpace {cellSpace.Id} is picking point");
             }
         }
 

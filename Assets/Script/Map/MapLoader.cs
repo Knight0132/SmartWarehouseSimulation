@@ -3,6 +3,7 @@ using UnityEngine.UI;
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Threading.Tasks;
 using Newtonsoft.Json;
 using NetTopologySuite.Geometries;
 using NetTopologySuite.IO;
@@ -19,16 +20,13 @@ namespace Map {
         public float width;
         [Range(0, 100)]
         public float length;
-        // public Vector3 startPoint;
-        // public Vector3 endPoint;
 
         private Graph graph;
-        // private SearchAlgorithm selectedAlgorithm = SearchAlgorithm.Astar_Traffic_Completed;
         private float speed;
 
-        private void Start()
+        private async void Start()
         {
-            indoorSpace = LoadJson();
+            indoorSpace = await LoadJsonAsync();
             Debug.Log(indoorSpace.ToJson());
 
             if (indoorSpace == null)
@@ -44,89 +42,55 @@ namespace Map {
             this.graph = GenerateRouteGraph(indoorSpace);
         }
 
-        // public Vector3 GetRandomNavigablePosition(IndoorSpace indoorSpace)
-        // {
-        //     bool validPositionFound = false;
-        //     int attempts = 0;
-        //     Vector3 randomPosition = Vector3.zero;
 
-        //     while (!validPositionFound && attempts < 100)
-        //     {
-        //         randomPosition = new Vector3(UnityEngine.Random.Range(0f, length), 0f, UnityEngine.Random.Range(0f, width));
-        //         CellSpace cellSpace = indoorSpace.GetCellSpaceFromCoordinates(randomPosition);
-
-        //         if (cellSpace != null && (bool)cellSpace.Properties["navigable"])
-        //         {
-        //             validPositionFound = true;
-        //             Debug.Log($"Valid position found at: {randomPosition}");
-        //         }
-        //         else
-        //         {
-        //             Debug.Log($"Attempt {attempts}: Position {randomPosition} is not navigable.");
-        //         }
-        //         attempts++;
-        //     }
-            
-        //     if (validPositionFound)
-        //     {
-        //         Debug.Log("Position set to: " + randomPosition);
-        //         return randomPosition;
-        //     }
-        //     else
-        //     {
-        //         Debug.Log("Failed to find a navigable position after 100 attempts.");
-        //         return Vector3.zero;
-        //     }
-        // }
-
-        // public List<Tuple<ConnectionPoint, float>> CalculatePath(Vector3 start, Vector3 end)
-        // {
-        //     RoutePoint startPoint = graph.GetRoutePointFromCoordinate(start, true);
-        //     RoutePoint endPoint = graph.GetRoutePointFromCoordinate(end, true);
-
-        //     if (startPoint != null && endPoint != null)
-        //     {
-        //         return PathPlanner.FindPath(selectedAlgorithm, graph, startPoint, endPoint, speed);
-        //     }
-        //     return new List<Tuple<ConnectionPoint, float>>();
-        // }
-
-        public IndoorSpace LoadJson()
+        public async Task<IndoorSpace> LoadJsonAsync()
         {
-            JsonSerializerSettings settings = new JsonSerializerSettings
+            string jsonText = jsonFile.text;
+            return await Task.Run(() =>
             {
-                Converters = new List<JsonConverter> { new GeometryConverter() }
-            };
-
-            IndoorSpace indoorSpace = null;
-
-            try
-            {
-                indoorSpace = JsonConvert.DeserializeObject<IndoorSpace>(jsonFile.text, settings);
-                if (indoorSpace != null)
+                JsonSerializerSettings settings = new JsonSerializerSettings
                 {
-                    indoorSpace.LoadProperties();
-                }
-                Debug.Log("JSON Deserialized successfully");
-            }
-            catch (Exception ex)
-            {
-                Debug.LogError("Error during JSON deserialization: " + ex.Message);
-            }
+                    Converters = new List<JsonConverter> { new GeometryConverter() }
+                };
 
-            return indoorSpace;
+                try
+                {
+                    var indoorSpace = JsonConvert.DeserializeObject<IndoorSpace>(jsonText, settings);
+                    if (indoorSpace != null)
+                    {
+                        indoorSpace.LoadProperties();
+                    }
+                    Debug.Log("JSON Deserialized successfully");
+                    return indoorSpace;
+                }
+                catch (Exception ex)
+                {
+                    Debug.LogError("Error during JSON deserialization: " + ex.Message);
+                    return null;
+                }
+            });
         }
 
         public Graph GenerateRouteGraph(IndoorSpace indoorSpace)
         {
+            if (indoorSpace == null)
+            {
+                throw new ArgumentNullException(nameof(indoorSpace), "IndoorSpace must not be null.");
+            }
+
             Graph graph = new Graph(indoorSpace);
             Hypergraph hypergraph = indoorSpace.GetHypergraph();
+
+            if (hypergraph == null || hypergraph.HyperNodes == null || hypergraph.HyperEdges == null)
+            {
+                throw new InvalidOperationException("Hypergraph or its components must not be null.");
+            }
 
             foreach (var connectionPoint in hypergraph.HyperNodes)
             {
                 RoutePoint routePoint = new RoutePoint();
                 routePoint.AddConnectionPoint(connectionPoint);
-                
+
                 foreach (var rLineGroup in hypergraph.HyperEdges)
                 {
                     if (rLineGroup.ConnectionPoints.Contains(connectionPoint.Id))

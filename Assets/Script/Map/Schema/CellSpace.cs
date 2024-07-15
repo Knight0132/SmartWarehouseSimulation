@@ -27,7 +27,6 @@ namespace Map {
 
         private bool HasFunctionOfType(string type) {
             if (Properties.TryGetValue("functions", out object functionsObj)) {
-                Debug.Log($"Functions are {functionsObj.GetType()}");
 
                 if (functionsObj is JArray functionsJArray) {
                     var functions = functionsJArray.ToObject<List<Dictionary<string, object>>>();
@@ -58,17 +57,18 @@ namespace Map {
 
         public List<string> GetBoundings()
         {
-            if (Properties.TryGetValue("functions", out object functionsObj) && functionsObj is List<object> functions)
+            if (Properties.TryGetValue("functions", out object functionsObj) && functionsObj is JArray functionsJArray)
             {
-                foreach (var functionObj in functions)
+                var functions = functionsJArray.ToObject<List<Dictionary<string, object>>>();
+                foreach (var function in functions)
                 {
-                    if (functionObj is Dictionary<string, object> function && function.TryGetValue("type", out object typeObj) && typeObj as string == "picking point")
+                    if (function.TryGetValue("type", out object typeObj) && typeObj as string == "picking point")
                     {
-                        if (function.TryGetValue("features", out object featuresObj) && featuresObj is Dictionary<string, object> features)
+                        if (function.TryGetValue("features", out object featuresObj) && featuresObj is JObject featuresJObject)
                         {
-                            if (features.TryGetValue("boundings", out object boundingObj) && boundingObj is List<object> boundings)
+                            if (featuresJObject.TryGetValue("boundings", out JToken boundingsJToken) && boundingsJToken is JArray boundingsJArray)
                             {
-                                return boundings.Cast<string>().ToList();
+                                return boundingsJArray.ToObject<List<string>>();
                             }
                         }
                     }

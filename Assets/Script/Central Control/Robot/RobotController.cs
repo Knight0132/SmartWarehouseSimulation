@@ -13,22 +13,11 @@ namespace CentralControl
         public MapLoader mapLoader;
         public Transform targetIndicator;
         public float defaultSpeed = 5.0f;
-        public SearchAlgorithm selectedAlgorithm = SearchAlgorithm.Astar_Traffic_Completed;
         public int Id { get; private set; }
+        public Graph graph { get; private set; }
+        public IndoorSpace indoorSpace {get; private set; }
 
-        // private Vector3 currentTarget;
-        // private int pathIndex = 0;
-        // private List<Tuple<ConnectionPoint, float>> path = new List<Tuple<ConnectionPoint, float>>();
-        // private CellSpace cellSpace;
-        // private RoutePoint routePoint;
-        // private ConnectionPoint connectionPoint;
-        // private Layer layer;
-        // private float startTime;
-        // private float elapsedTime;
-        // private float currentSpeed;
         private bool isMoving = false;
-        private Graph graph;
-        private IndoorSpace indoorSpace;
         private Queue<Order> ordersQueue = new Queue<Order>();
 
         void Update()
@@ -39,16 +28,17 @@ namespace CentralControl
             }
         }
 
-        public void InitializeRobot(int id)
+        public void InitializeRobot(int id, IndoorSpace indoorSpace, Graph graph)
         {
             this.Id = id;
-            indoorSpace = mapLoader.LoadJson();
-            graph = mapLoader.GenerateRouteGraph(indoorSpace); 
+            this.indoorSpace = indoorSpace;
+            this.graph = graph; 
         }
 
         public void ReceiveOrder(Order order)
         {
             ordersQueue.Enqueue(order);
+            Debug.Log($"Robot {Id} received order {order.Id}");
             if (!isMoving)
             {
                 StartNextOrder();
@@ -60,6 +50,7 @@ namespace CentralControl
             if (ordersQueue.Count > 0)
             {
                 Order order = ordersQueue.Dequeue();
+                Debug.Log($"Robot {Id} starts order {order.Id}");
                 ExecuteOrder(order);
             }
         }
@@ -67,8 +58,9 @@ namespace CentralControl
         private void ExecuteOrder(Order order)
         {
             Vector3 targetPosition = order.Destination;
-            targetIndicator.position = targetPosition;
+            SetTargetIndicator(targetPosition);
             isMoving = true;
+            Debug.Log($"Robot {Id} executing order {order.Id} to {targetPosition}");
             StartCoroutine(MoveToPosition(targetPosition, order.ExecutionTime));
         }
 
@@ -83,7 +75,15 @@ namespace CentralControl
             yield return new WaitForSeconds(executionTime);
             
             isMoving = false;
-            Debug.Log("Order completed and executed for " + executionTime + " seconds at " + target);
+            Debug.Log($"Order completed and executed for {executionTime} seconds at {target}");
+        }
+
+        public void SetTargetIndicator(Vector3 position)
+        {
+            if (targetIndicator != null)
+            {
+                targetIndicator.position = position;
+            }
         }
 
         public bool IsFree
@@ -95,48 +95,5 @@ namespace CentralControl
         {
             get { return isMoving; }
         }
-
-        // public void AssignOrder(Order order)
-        // {
-        //     currentTarget = order.Coordinates;
-        //     targetIndicator.position = currentTarget;
-        //     RoutePoint startPosition = graph.GetRoutePointFromCoordinate(transform.position, true);
-        //     RoutePoint endPosition = graph.GetRoutePointFromCoordinate(currentTarget, true);
-        //     if (startPosition != null && endPosition != null)
-        //     {
-        //         path = PathPlanner.FindPath(selectedAlgorithm, graph, startPosition, endPosition, defaultSpeed);
-        //         isMoving = true;
-        //         pathIndex = 0;
-        //         startTime = Time.time;
-        //     }
-        //     else
-        //     {
-        //         Debug.LogError("One of the points is invalid.");
-        //     }
-        // }
-
-        // public void MoveTowardsNext()
-        // {
-        //     if (pathIndex < path.Count)
-        //     {
-        //         Vector3 targetPosition = graph.GetCoordinatesFromConnectionPoint(path[pathIndex].Item1);
-        //         CellSpace targetCellSpace = this.indoorSpace.GetCellSpaceFromConnectionPoint(path[pathIndex].Item1, false);
-        //         Layer targetLayer = graph.GetLayerFromConnectionPoint(path[pathIndex].Item1, false);
-        //         float currentSpeed = path[pathIndex].Item2;
-
-        //         transform.position = Vector3.MoveTowards(transform.position, targetPosition, Time.deltaTime * currentSpeed);
-        //         if (Vector3.Distance(transform.position, targetPosition) < 0.1f)
-        //         {
-        //             pathIndex++;
-
-        //             if (pathIndex == path.Count)
-        //             {
-        //                 elapsedTime = Time.time - startTime;
-        //                 Debug.Log("Path completed in: " + elapsedTime + " seconds.");
-        //                 isMoving = false;
-        //             }
-        //         }
-        //     }
-        // }
     }
 }

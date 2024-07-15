@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using UnityEngine;
 using Map;
 
@@ -15,13 +16,13 @@ namespace CentralControl
         public Graph graph;
         private List<RobotController> robots = new List<RobotController>();
 
-        void Start()
+        async void Start()
         {
-            indoorSpace = mapLoader.LoadJson();
+            indoorSpace = await mapLoader.LoadJsonAsync();
             width = mapLoader.width;
             length = mapLoader.length;
             graph = mapLoader.GenerateRouteGraph(indoorSpace); 
-            InitializeRobots();
+            await InitializeRobotsAsync();
         } 
 
         void Update()
@@ -29,10 +30,11 @@ namespace CentralControl
             CheckRobotStatus();
         }
 
-        private void InitializeRobots()
+        private async Task InitializeRobotsAsync()
         {
             for (int i = 0; i < numberOfRobots; i++)
             {
+                await Task.Delay(10);
                 Vector3 position = new Vector3(Random.Range(0, width), 0, Random.Range(0, length));
                 CellSpace cellSpace = indoorSpace.GetCellSpaceFromCoordinates(position);
                 if (cellSpace != null && cellSpace.IsNavigable())
@@ -41,7 +43,7 @@ namespace CentralControl
                     RobotController robot = robotObj.GetComponent<RobotController>();
                     if (robot != null)
                     {
-                        robot.InitializeRobot(i + 1);
+                        robot.InitializeRobot(i + 1, indoorSpace, graph);
                         robots.Add(robot);
                     }
                 }

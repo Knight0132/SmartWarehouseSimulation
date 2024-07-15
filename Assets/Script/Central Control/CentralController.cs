@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Collections;
 using System.Linq;
+using System.Threading.Tasks;
 using NetTopologySuite.Geometries;
 using UnityEngine;
 using Map;
@@ -18,13 +19,28 @@ namespace CentralControl
         public float interval = 5f;
         public int orderCount = 10;
 
-        public void Start()
+        async void Start()
         {
-            indoorSpaceProvider = mapLoader.LoadJson();
+            await InitializeCentralControllerAsync();
+            StartCoroutine(StartGeneratingOrders());
+        }
+
+        private async Task InitializeCentralControllerAsync()
+        {
+            indoorSpaceProvider = await mapLoader.LoadJsonAsync();
+            if (indoorSpaceProvider == null)
+            {
+                Debug.LogError("Failed to load indoor space data.");
+                return;
+            }
+            
             width = mapLoader.width;
             length = mapLoader.length;
-            graph = mapLoader.GenerateRouteGraph(indoorSpaceProvider); 
-            StartCoroutine(StartGeneratingOrders());
+            graph = await Task.Run(() => mapLoader.GenerateRouteGraph(indoorSpaceProvider));
+            if (graph == null)
+            {
+                throw new System.ArgumentNullException(nameof(graph), "Graph must not be null.");
+            }
         }
 
         IEnumerator StartGeneratingOrders()
@@ -32,25 +48,21 @@ namespace CentralControl
             while (true)
             {
                 GenerateRandomOrders();
-                DispatchOrders();
                 yield return new WaitForSeconds(interval);
+                DispatchOrders();
             }
         }
 
         private void GenerateRandomOrders()
         {
-            int attempts = 0;
-            int maxAttempts = orderCount * 100;
             int i = 0;
-            while (i < orderCount && attempts < maxAttempts)
+            while (i < orderCount)
             {
                 string id = System.Guid.NewGuid().ToString();
                 int randomIndex = (int)Random.Range(0, indoorSpaceProvider.BusinessPoints.Count - 1);
-                
-                Debug.Log($"Generated randomIndex: {randomIndex} / {indoorSpaceProvider.BusinessPoints.Count}");
                 CellSpace cellSpace = indoorSpaceProvider.BusinessPoints[randomIndex];
                 float executionTime = Random.Range(0f, 30f);
-                Debug.Log($"Generated order: {id} in {cellSpace.Id} lasting {executionTime} seconds");
+                i++;
             }
         }
 
