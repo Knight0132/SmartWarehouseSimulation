@@ -88,6 +88,21 @@ namespace Map {
             Debug.Log($"Picking Points: {PickingPoints.Count}, Business Points: {BusinessPoints.Count}");
         }
 
+        public PickingPoint GetPickingPointFromBusinessPoint(CellSpace cellSpace)
+        {
+            if (cellSpace.IsBusinesspoint())
+            {
+                foreach (var pickingPoint in _pickingPoints)
+                {
+                    if (pickingPoint.Boundings.Contains(cellSpace.Id))
+                    {
+                        return pickingPoint;
+                    }
+                }
+            }
+            return null;
+        }
+
         public CellSpace GetCellFromId(string id)
         {
             foreach (var cellSpace in _cellSpaces)

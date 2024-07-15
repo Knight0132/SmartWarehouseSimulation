@@ -33,7 +33,7 @@ namespace CentralControl
                 Debug.LogError("Failed to load indoor space data.");
                 return;
             }
-            
+
             width = mapLoader.width;
             length = mapLoader.length;
             graph = await Task.Run(() => mapLoader.GenerateRouteGraph(indoorSpaceProvider));
@@ -61,8 +61,12 @@ namespace CentralControl
                 string id = System.Guid.NewGuid().ToString();
                 int randomIndex = (int)Random.Range(0, indoorSpaceProvider.BusinessPoints.Count - 1);
                 CellSpace cellSpace = indoorSpaceProvider.BusinessPoints[randomIndex];
+                Vector3 position = new Vector3((float)cellSpace.Space.Centroid.X, 0, (float)cellSpace.Space.Centroid.Y);
                 float executionTime = Random.Range(0f, 30f);
+                PickingPoint pickingPointCellSpace = indoorSpaceProvider.GetPickingPointFromBusinessPoint(cellSpace);
+                orderManager.AddOrder(id, position, pickingPointCellSpace, executionTime);
                 i++;
+                Debug.Log($"Generating order {id} at {cellSpace.Id}");
             }
         }
 

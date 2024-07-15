@@ -33,6 +33,11 @@ namespace CentralControl
             this.Id = id;
             this.indoorSpace = indoorSpace;
             this.graph = graph; 
+            
+            if (ordersQueue.Count > 0 && !isMoving)
+            {
+                StartNextOrder();
+            }
         }
 
         public void ReceiveOrder(Order order)

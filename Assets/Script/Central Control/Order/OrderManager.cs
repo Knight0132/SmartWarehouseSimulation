@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
+using Map;
 
 namespace CentralControl
 {
@@ -8,9 +9,9 @@ namespace CentralControl
     {
         private List<Order> orders = new List<Order>();
 
-        public void AddOrder(string id, Vector3 coordinates, float executionTime)
+        public void AddOrder(string id, Vector3 coordinates, PickingPoint pickingPoint, float executionTime)
         {
-            Order newOrder = new Order(id, coordinates, executionTime);
+            Order newOrder = new Order(id, coordinates, pickingPoint, executionTime);
             orders.Add(newOrder);
             Debug.Log($"Added new order: {id} at {coordinates}");
         }
