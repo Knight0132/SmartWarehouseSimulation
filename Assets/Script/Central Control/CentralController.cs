@@ -41,6 +41,7 @@ namespace CentralControl
             {
                 throw new System.ArgumentNullException(nameof(graph), "Graph must not be null.");
             }
+            Debug.Log("Central controller initialized.");
         }
 
         IEnumerator StartGeneratingOrders()
@@ -48,8 +49,8 @@ namespace CentralControl
             while (true)
             {
                 GenerateRandomOrders();
-                yield return new WaitForSeconds(interval);
                 DispatchOrders();
+                yield return new WaitForSeconds(interval);
             }
         }
 
@@ -79,6 +80,10 @@ namespace CentralControl
                 {
                     closestRobot.ReceiveOrder(order);
                     Debug.Log($"Order {order.Id} assigned to robot {closestRobot.Id}");
+                }
+                else
+                {
+                    Debug.Log($"No available robots for order {order.Id}");
                 }
             }
         }

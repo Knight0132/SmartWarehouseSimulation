@@ -45,21 +45,39 @@ namespace CentralControl
                     {
                         robot.InitializeRobot(i + 1, indoorSpace, graph);
                         robots.Add(robot);
+                        Debug.Log($"Robot {robot.Id} initialized at {position}");
                     }
                 }
+            }
+
+            foreach (var robot in robots)
+            {
+                Debug.Log($"Robot {robot.Id} status: {(robot.IsFree ? "Free" : "Busy")}");
             }
         }
 
         public List<RobotController> GetFreeRobots()
         {
-            return robots.Where(robot => robot.IsFree).ToList();
+            var freeRobots = robots.Where(robot => robot.IsFree).ToList();
+            Debug.Log($"Found {freeRobots.Count} free robots.");
+            return freeRobots;
         }
 
         public RobotController GetClosestFreeRobot(Vector3 position)
         {
-            return robots.Where(robot => robot.IsFree)
-                        .OrderBy(robot => Vector3.Distance(robot.transform.position, position))
-                        .FirstOrDefault();
+            var closestRobot = robots.Where(robot => robot.IsFree)
+                                     .OrderBy(robot => Vector3.Distance(robot.transform.position, position))
+                                     .FirstOrDefault();
+
+            if (closestRobot != null)
+            {
+                Debug.Log($"Closest free robot is {closestRobot.Id} at position {closestRobot.transform.position}");
+            }
+            else
+            {
+                Debug.Log("No free robot found.");
+            }
+            return closestRobot;
         }
 
         private void CheckRobotStatus()

@@ -33,6 +33,9 @@ namespace CentralControl
             this.Id = id;
             this.indoorSpace = indoorSpace;
             this.graph = graph; 
+
+            isMoving = false;
+            Debug.Log($"Robot {Id} initialized with IsFree = {IsFree}");
             
             if (ordersQueue.Count > 0 && !isMoving)
             {
