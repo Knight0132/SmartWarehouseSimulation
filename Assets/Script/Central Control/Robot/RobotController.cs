@@ -13,9 +13,11 @@ namespace CentralControl
         public MapLoader mapLoader;
         public Transform targetIndicator;
         public float defaultSpeed = 5.0f;
+        public int MaxOrder = 5;
         public int Id { get; private set; }
         public Graph graph { get; private set; }
         public IndoorSpace indoorSpace {get; private set; }
+
 
         private bool isMoving = false;
         private Queue<Order> ordersQueue = new Queue<Order>();
@@ -35,6 +37,7 @@ namespace CentralControl
             this.graph = graph; 
 
             isMoving = false;
+            ordersQueue.Clear();
             Debug.Log($"Robot {Id} initialized with IsFree = {IsFree}");
             
             if (ordersQueue.Count > 0 && !isMoving)
@@ -96,7 +99,12 @@ namespace CentralControl
 
         public bool IsFree
         {
-            get { return !isMoving && ordersQueue.Count == 0; }
+            get
+            {
+                bool free = !isMoving && ordersQueue.Count < MaxOrder;
+                Debug.Log($"Robot {Id} IsFree check: {free} (isMoving: {isMoving}, ordersQueue.Count: {ordersQueue.Count}, MaxOrder: {MaxOrder})");
+                return free;
+            }
         }
 
         public bool IsMoving

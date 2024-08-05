@@ -45,14 +45,14 @@ namespace CentralControl
                     {
                         robot.InitializeRobot(i + 1, indoorSpace, graph);
                         robots.Add(robot);
-                        Debug.Log($"Robot {robot.Id} initialized at {position}");
+                        Debug.Log($"Robot {robot.Id} initialized at position {position} with IsFree = {robot.IsFree}");
                     }
                 }
             }
 
             foreach (var robot in robots)
             {
-                Debug.Log($"Robot {robot.Id} status: {(robot.IsFree ? "Free" : "Busy")}");
+                Debug.Log($"Robot {robot.Id} status after initializtion: {(robot.IsFree ? "Free" : "Busy")}");
             }
         }
 
@@ -60,6 +60,11 @@ namespace CentralControl
         {
             var freeRobots = robots.Where(robot => robot.IsFree).ToList();
             Debug.Log($"Found {freeRobots.Count} free robots.");
+
+            foreach (var robot in freeRobots)
+            {
+                Debug.Log($"Free robot {robot.Id} at position {robot.transform.position}");
+            }
             return freeRobots;
         }
 

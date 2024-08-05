@@ -73,7 +73,9 @@ namespace CentralControl
 
         private void DispatchOrders()
         {
-            foreach (var order in orderManager.GetAllOrders())
+            var orders = orderManager.GetAllOrders();
+            Debug.Log($"Dispatching {orders.Count} orders.");
+            foreach (var order in orders)
             {
                 RobotController closestRobot = robotManager.GetClosestFreeRobot(order.Destination);
                 if (closestRobot != null && closestRobot.IsFree)
