@@ -22,6 +22,7 @@ namespace CentralControl
         async void Start()
         {
             await InitializeCentralControllerAsync();
+            await InitializeRobotsAsync();
             StartCoroutine(StartGeneratingOrders());
         }
 
@@ -42,6 +43,11 @@ namespace CentralControl
                 throw new System.ArgumentNullException(nameof(graph), "Graph must not be null.");
             }
             Debug.Log("Central controller initialized.");
+        }
+
+        private async Task InitializeRobotsAsync()
+        {
+            await robotManager.InitializeRobotsAsync();
         }
 
         IEnumerator StartGeneratingOrders()

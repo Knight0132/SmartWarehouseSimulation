@@ -103,7 +103,7 @@ namespace Map {
             return null;
         }
 
-        public CellSpace GetCellFromId(string id)
+        public CellSpace GetCellSpaceFromId(string id)
         {
             foreach (var cellSpace in _cellSpaces)
             {
@@ -124,7 +124,7 @@ namespace Map {
                 {
                     if (cellBoundary.Id == connectionPoint.Id)
                     {
-                        return GetCellFromId(cellBoundary.Source);
+                        return GetCellSpaceFromId(cellBoundary.Source);
                     }
                 }
             }
@@ -134,7 +134,7 @@ namespace Map {
                 {
                     if (cellBoundary.Id == connectionPoint.Id)
                     {
-                        return GetCellFromId(cellBoundary.Target);
+                        return GetCellSpaceFromId(cellBoundary.Target);
                     }
                 }
             }

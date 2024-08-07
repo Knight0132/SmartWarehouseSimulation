@@ -11,28 +11,26 @@ namespace CentralControl
         public GameObject robotPrefab;
         public int numberOfRobots = 10;
         public MapLoader mapLoader;
+        public Transform targetIndicatorPrefab;
         public IndoorSpace indoorSpace;
         public float width, length;
         public Graph graph;
         private List<RobotController> robots = new List<RobotController>();
-
-        async void Start()
-        {
-            indoorSpace = await mapLoader.LoadJsonAsync();
-            width = mapLoader.width;
-            length = mapLoader.length;
-            graph = mapLoader.GenerateRouteGraph(indoorSpace); 
-            await InitializeRobotsAsync();
-        } 
 
         void Update()
         {
             CheckRobotStatus();
         }
 
-        private async Task InitializeRobotsAsync()
+        public async Task InitializeRobotsAsync()
         {
-            for (int i = 0; i < numberOfRobots; i++)
+            indoorSpace = await mapLoader.LoadJsonAsync();
+            width = mapLoader.width;
+            length = mapLoader.length;
+            graph = mapLoader.GenerateRouteGraph(indoorSpace); 
+            
+            int i = 0;
+            while (i < numberOfRobots)
             {
                 await Task.Delay(10);
                 Vector3 position = new Vector3(Random.Range(0, width), 0, Random.Range(0, length));
@@ -44,15 +42,15 @@ namespace CentralControl
                     if (robot != null)
                     {
                         robot.InitializeRobot(i + 1, indoorSpace, graph);
+
+                        Transform targetIndicatorInstance = Instantiate(targetIndicatorPrefab);
+                        robot.mapLoader = this.mapLoader;
+                        robot.targetIndicator = targetIndicatorInstance;
+
                         robots.Add(robot);
-                        Debug.Log($"Robot {robot.Id} initialized at position {position} with IsFree = {robot.IsFree}");
+                        i++;
                     }
                 }
-            }
-
-            foreach (var robot in robots)
-            {
-                Debug.Log($"Robot {robot.Id} status after initializtion: {(robot.IsFree ? "Free" : "Busy")}");
             }
         }
 

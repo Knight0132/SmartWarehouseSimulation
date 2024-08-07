@@ -38,7 +38,6 @@ namespace CentralControl
 
             isMoving = false;
             ordersQueue.Clear();
-            Debug.Log($"Robot {Id} initialized with IsFree = {IsFree}");
             
             if (ordersQueue.Count > 0 && !isMoving)
             {
@@ -68,25 +67,71 @@ namespace CentralControl
 
         private void ExecuteOrder(Order order)
         {
-            Vector3 targetPosition = order.Destination;
+            PickingPoint pickingPoint = order.PickingPoint;
+            CellSpace correspondingCellSpace = indoorSpace.GetCellSpaceFromId(pickingPoint.Id);
+            Point point = (Point)correspondingCellSpace.Node;
+            Vector3 targetPosition = new Vector3((float)point.X, 0, (float)point.Y);
             SetTargetIndicator(targetPosition);
             isMoving = true;
             Debug.Log($"Robot {Id} executing order {order.Id} to {targetPosition}");
-            StartCoroutine(MoveToPosition(targetPosition, order.ExecutionTime));
+
+            // Customized path planning
+            RoutePoint startPoint = graph.GetRoutePointFromCoordinate(transform.position, true);
+            RoutePoint endPoint = graph.GetRoutePointFromCoordinate(targetPosition, true);
+            
+            if (startPoint != null && endPoint != null)
+            {
+                List<Tuple<ConnectionPoint, float>> path = PathPlanner.FindPath(SearchAlgorithm.Astar_Traffic_Completed, graph, startPoint, endPoint, defaultSpeed);
+                if (path.Count > 0)
+                {
+                    StartCoroutine(MoveAlongPath(path, order.ExecutionTime, targetPosition));
+                }
+                else
+                {
+                    Debug.Log("Path is empty");
+                    isMoving = false;
+                }
+            }
+            else
+            {
+                Debug.Log("Start or end point is null");
+                isMoving = false;
+            }
+        
         }
 
-        IEnumerator MoveToPosition(Vector3 target, float executionTime)
+        IEnumerator MoveAlongPath(List<Tuple<ConnectionPoint, float>> path, float executionTime, Vector3 finalTargetPosition)
         {
+            foreach (var step in path)
+            {
+                Point targetPoint = (Point)step.Item1.Point;
+                Vector3 target = new Vector3((float)targetPoint.X, 0, (float)targetPoint.Y);
+                while (Vector3.Distance(transform.position, target) > 0.1f)
+                {
+                    transform.position = Vector3.MoveTowards(transform.position, target, step.Item2 * Time.deltaTime);
+                    yield return null;
+                }
+            }
+
+            yield return MoveToPosition(finalTargetPosition);
+            
+            Debug.Log($"Robot {Id} reached destination, waiting for {executionTime} seconds");
+            yield return new WaitForSeconds(executionTime);
+            
+            isMoving = false;
+            Debug.Log($"Order completed for {executionTime} seconds at destination");
+        }
+
+        IEnumerator MoveToPosition(Vector3 target)
+        {
+            Debug.Log($"Moving to final position {target}");
             while (Vector3.Distance(transform.position, target) > 0.1f)
             {
                 transform.position = Vector3.MoveTowards(transform.position, target, defaultSpeed * Time.deltaTime);
                 yield return null;
             }
             
-            yield return new WaitForSeconds(executionTime);
-            
             isMoving = false;
-            Debug.Log($"Order completed and executed for {executionTime} seconds at {target}");
         }
 
         public void SetTargetIndicator(Vector3 position)
