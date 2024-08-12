@@ -13,7 +13,6 @@ namespace CentralControl
         {
             Order newOrder = new Order(id, coordinates, pickingPoint, executionTime);
             orders.Add(newOrder);
-            Debug.Log($"Added new order: {id} at {coordinates}");
         }
 
         public List<Order> GetAllOrders()

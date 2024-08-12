@@ -12,8 +12,9 @@ namespace CentralControl
     {
         public MapLoader mapLoader;
         public Transform targetIndicator;
+        public SearchAlgorithm selectedAlgorithm = SearchAlgorithm.Astar_Traffic_Completed;
         public float defaultSpeed = 5.0f;
-        public int MaxOrder = 5;
+        public int MaxOrder = 20;
         public int Id { get; private set; }
         public Graph graph { get; private set; }
         public IndoorSpace indoorSpace {get; private set; }
@@ -81,7 +82,7 @@ namespace CentralControl
             
             if (startPoint != null && endPoint != null)
             {
-                List<Tuple<ConnectionPoint, float>> path = PathPlanner.FindPath(SearchAlgorithm.Astar_Traffic_Completed, graph, startPoint, endPoint, defaultSpeed);
+                List<Tuple<ConnectionPoint, float>> path = PathPlanner.FindPath(selectedAlgorithm, graph, startPoint, endPoint, defaultSpeed);
                 if (path.Count > 0)
                 {
                     StartCoroutine(MoveAlongPath(path, order.ExecutionTime, targetPosition));
@@ -118,7 +119,7 @@ namespace CentralControl
             Debug.Log($"Robot {Id} reached destination, waiting for {executionTime} seconds");
             yield return new WaitForSeconds(executionTime);
             
-            isMoving = false;
+            UpdateRobotStatus();
             Debug.Log($"Order completed for {executionTime} seconds at destination");
         }
 
@@ -142,19 +143,26 @@ namespace CentralControl
             }
         }
 
-        public bool IsFree
-        {
-            get
-            {
-                bool free = !isMoving && ordersQueue.Count < MaxOrder;
-                Debug.Log($"Robot {Id} IsFree check: {free} (isMoving: {isMoving}, ordersQueue.Count: {ordersQueue.Count}, MaxOrder: {MaxOrder})");
-                return free;
-            }
-        }
-
         public bool IsMoving
         {
             get { return isMoving; }
         }
+
+        public bool IsAvailable
+        {
+            get { return ordersQueue.Count < MaxOrder; }
+        }
+
+        public int GetRobotOrdersQueueCount()
+        {
+            return ordersQueue.Count;
+        }
+
+        private void UpdateRobotStatus()
+        {
+            isMoving = false;
+            Debug.Log($"Robot {Id} status updated to free");
+        }
+
     }
 }

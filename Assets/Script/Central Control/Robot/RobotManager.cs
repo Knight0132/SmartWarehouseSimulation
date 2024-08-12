@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using UnityEngine;
+using NetTopologySuite.Geometries;
 using Map;
 
 namespace CentralControl
@@ -33,8 +34,10 @@ namespace CentralControl
             while (i < numberOfRobots)
             {
                 await Task.Delay(10);
-                Vector3 position = new Vector3(Random.Range(0, width), 0, Random.Range(0, length));
-                CellSpace cellSpace = indoorSpace.GetCellSpaceFromCoordinates(position);
+                Vector3 initialPosition = new Vector3(Random.Range(0, width), 0, Random.Range(0, length));
+                CellSpace cellSpace = indoorSpace.GetCellSpaceFromCoordinates(initialPosition);
+                Point point = (Point)cellSpace.Node;
+                Vector3 position = new Vector3((float)point.X, 0, (float)point.Y);
                 if (cellSpace != null && cellSpace.IsNavigable())
                 {
                     GameObject robotObj = Instantiate(robotPrefab, position, Quaternion.identity);
@@ -54,9 +57,9 @@ namespace CentralControl
             }
         }
 
-        public List<RobotController> GetFreeRobots()
+        public List<RobotController> GetAvailableRobots()
         {
-            var freeRobots = robots.Where(robot => robot.IsFree).ToList();
+            var freeRobots = robots.Where(robot => robot.IsAvailable).ToList();
             Debug.Log($"Found {freeRobots.Count} free robots.");
 
             foreach (var robot in freeRobots)
@@ -66,30 +69,30 @@ namespace CentralControl
             return freeRobots;
         }
 
-        public RobotController GetClosestFreeRobot(Vector3 position)
+        public RobotController GetClosestAvailableRobot(Vector3 position)
         {
-            var closestRobot = robots.Where(robot => robot.IsFree)
+            var closestRobot = robots.Where(robot => robot.IsAvailable)
                                      .OrderBy(robot => Vector3.Distance(robot.transform.position, position))
                                      .FirstOrDefault();
 
             if (closestRobot != null)
             {
-                Debug.Log($"Closest free robot is {closestRobot.Id} at position {closestRobot.transform.position}");
+                Debug.Log($"Closest available robot is {closestRobot.Id} at position {closestRobot.transform.position}");
             }
             else
             {
-                Debug.Log("No free robot found.");
+                Debug.Log("No available robot found.");
             }
             return closestRobot;
         }
 
-        private void CheckRobotStatus()
+        public void CheckRobotStatus()
         {
             foreach (var robot in robots)
             {
-                if (!robot.IsFree)
+                if (!robot.IsAvailable)
                 {
-                    Debug.Log("Robot " + robot.Id + " is active.");
+                    Debug.Log($"Robot {robot.Id} is busy with {robot.GetRobotOrdersQueueCount()} orders");
                 }
             }
         }

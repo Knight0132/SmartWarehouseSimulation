@@ -61,6 +61,13 @@ namespace PathPlanning
                 {
                     bool sequence = false;
                     RoutePoint neighborNode = graph.GetRoutePointFormConnectionPoint(neighbor);
+
+                    if (neighborNode == null)
+                    {
+                        UnityEngine.Debug.LogError($"neighborNode is null for neighbor: {neighbor.Id}");
+                        continue;
+                    }
+
                     Layer layerOfNeighbor = graph.GetLayerFromConnectionPoint(neighbor, sequence);
                     
                     float currentSpeed = speed;
@@ -99,6 +106,12 @@ namespace PathPlanning
             float currentSpeed = 0f;
             while (current != null && current != startPosition)
             {
+                if (!previous.ContainsKey(current))
+                {
+                    UnityEngine.Debug.LogError($"Previous dictionary does not contain the key: {current}");
+                    return new List<Tuple<ConnectionPoint, float>>();
+                }
+
                 path.Add(new Tuple<ConnectionPoint, float>(current.ConnectionPoint, currentSpeed));
                 current = previous[current].Item1;
                 currentSpeed = previous[current].Item2;
@@ -116,8 +129,8 @@ namespace PathPlanning
                 pathIds.Add(connectionPoint.Item1.Id);
                 speeds.Add(connectionPoint.Item2);
             }
-            UnityEngine.Debug.Log("Path: " + string.Join(" -> ", pathIds.ToArray()));
-            UnityEngine.Debug.Log("Speeds: " + string.Join(" -> ", speeds.ToArray()));
+            // UnityEngine.Debug.Log("Path: " + string.Join(" -> ", pathIds.ToArray()));
+            // UnityEngine.Debug.Log("Speeds: " + string.Join(" -> ", speeds.ToArray()));
 
             return path;
         }

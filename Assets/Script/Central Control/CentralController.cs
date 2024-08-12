@@ -18,6 +18,9 @@ namespace CentralControl
         public Graph graph;
         public float interval = 5f;
         public int orderCount = 10;
+        public float correctionFactor = 0.1f;
+
+        private bool generatingOrders;
 
         async void Start()
         {
@@ -52,10 +55,28 @@ namespace CentralControl
 
         IEnumerator StartGeneratingOrders()
         {
-            while (true)
+            generatingOrders = true;
+            while (generatingOrders)
             {
-                GenerateRandomOrders();
-                DispatchOrders();
+                Debug.Log("Starting to generate orders...");
+                try
+                {
+                    GenerateRandomOrders();
+                }
+                catch (System.Exception ex)
+                {
+                    Debug.LogError($"Error generating orders: {ex.Message}");
+                }
+                Debug.Log("Orders generated, starting to dispatch orders...");
+                try
+                {
+                    DispatchOrders();
+                }
+                catch (System.Exception ex)
+                {
+                    Debug.LogError($"Error dispatching orders: {ex.Message}");
+                }
+                Debug.Log("Orders dispatched, waiting for next interval...");
                 yield return new WaitForSeconds(interval);
             }
         }
@@ -65,33 +86,58 @@ namespace CentralControl
             int i = 0;
             while (i < orderCount)
             {
-                string id = System.Guid.NewGuid().ToString();
-                int randomIndex = (int)Random.Range(0, indoorSpaceProvider.BusinessPoints.Count - 1);
-                CellSpace cellSpace = indoorSpaceProvider.BusinessPoints[randomIndex];
-                Vector3 position = new Vector3((float)cellSpace.Space.Centroid.X, 0, (float)cellSpace.Space.Centroid.Y);
-                float executionTime = Random.Range(0f, 30f);
-                PickingPoint pickingPointCellSpace = indoorSpaceProvider.GetPickingPointFromBusinessPoint(cellSpace);
-                orderManager.AddOrder(id, position, pickingPointCellSpace, executionTime);
-                i++;
-                Debug.Log($"Generating order {id} at {cellSpace.Id}");
+                try
+                {
+                    string id = System.Guid.NewGuid().ToString();
+                    int randomIndex = (int)Random.Range(0, indoorSpaceProvider.BusinessPoints.Count - 1);
+                    CellSpace cellSpace = indoorSpaceProvider.BusinessPoints[randomIndex];
+                    Vector3 position = new Vector3((float)cellSpace.Space.Centroid.X, 0, (float)cellSpace.Space.Centroid.Y);
+                    float executionTime = Random.Range(0f * correctionFactor, 30f * correctionFactor);
+                    PickingPoint pickingPointCellSpace = indoorSpaceProvider.GetPickingPointFromBusinessPoint(cellSpace);
+                    orderManager.AddOrder(id, position, pickingPointCellSpace, executionTime);
+                    i++;
+                    Debug.Log($"Generated order {id} at {cellSpace.Id} with execution time {executionTime}");
+                }
+                catch (System.Exception ex)
+                {
+                    Debug.LogError($"Error generating order: {ex.Message}");
+                }
             }
         }
 
         private void DispatchOrders()
         {
             var orders = orderManager.GetAllOrders();
-            Debug.Log($"Dispatching {orders.Count} orders.");
+            // Debug.Log($"Dispatching {orders.Count} orders.");
             foreach (var order in orders)
             {
-                RobotController closestRobot = robotManager.GetClosestFreeRobot(order.Destination);
-                if (closestRobot != null && closestRobot.IsFree)
+                try
                 {
-                    closestRobot.ReceiveOrder(order);
-                    Debug.Log($"Order {order.Id} assigned to robot {closestRobot.Id}");
+                    if (order.Destination == null)
+                    {
+                        Debug.LogError($"Order {order.Id} has null destination.");
+                        continue;
+                    }
+                    RobotController closestRobot = robotManager.GetClosestAvailableRobot(order.Destination);
+                    if (closestRobot == null)
+                    {
+                        robotManager.CheckRobotStatus();
+                        Debug.LogError($"No available robot for order {order.Id}.");
+                        continue;
+                    }
+                    if (closestRobot.IsAvailable)
+                    {
+                        closestRobot.ReceiveOrder(order);
+                        Debug.Log($"Order {order.Id} assigned to robot {closestRobot.Id}");
+                    }
+                    else
+                    {
+                        Debug.Log($"Robot {closestRobot.Id} is full.");
+                    }
                 }
-                else
+                catch (System.Exception ex)
                 {
-                    Debug.Log($"No available robots for order {order.Id}");
+                    Debug.LogError($"Error dispatching order {order.Id}: {ex.Message}");
                 }
             }
         }

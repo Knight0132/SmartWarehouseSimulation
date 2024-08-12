@@ -113,5 +113,6 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   mapLoader: {fileID: 0}
   targetIndicator: {fileID: 0}
+  selectedAlgorithm: 2
   defaultSpeed: 5
-  MaxOrder: 5
+  MaxOrder: 20
