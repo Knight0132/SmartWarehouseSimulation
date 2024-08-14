@@ -12,6 +12,12 @@ namespace CentralControl
         public void AddOrder(string id, Vector3 coordinates, PickingPoint pickingPoint, float executionTime)
         {
             Order newOrder = new Order(id, coordinates, pickingPoint, executionTime);
+
+            if (newOrder == null)
+            {
+                throw new System.ArgumentNullException(nameof(newOrder), "Order cannot be null.");
+            }
+
             orders.Add(newOrder);
         }
 

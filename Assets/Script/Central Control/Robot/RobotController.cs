@@ -21,11 +21,12 @@ namespace CentralControl
 
 
         private bool isMoving = false;
+        private bool isPicking = false;
         private Queue<Order> ordersQueue = new Queue<Order>();
 
         void Update()
         {
-            if (!isMoving && ordersQueue.Count > 0)
+            if (!isMoving && !isPicking && ordersQueue.Count > 0)
             {
                 StartNextOrder();
             }
@@ -38,19 +39,16 @@ namespace CentralControl
             this.graph = graph; 
 
             isMoving = false;
+            isPicking = false;
             ordersQueue.Clear();
             
-            if (ordersQueue.Count > 0 && !isMoving)
-            {
-                StartNextOrder();
-            }
         }
 
         public void ReceiveOrder(Order order)
         {
             ordersQueue.Enqueue(order);
             Debug.Log($"Robot {Id} received order {order.Id}");
-            if (!isMoving)
+            if (!isMoving && !isPicking)
             {
                 StartNextOrder();
             }
@@ -117,6 +115,10 @@ namespace CentralControl
             yield return MoveToPosition(finalTargetPosition);
             
             Debug.Log($"Robot {Id} reached destination, waiting for {executionTime} seconds");
+            
+            isMoving = false;
+            isPicking = true;
+            
             yield return new WaitForSeconds(executionTime);
             
             UpdateRobotStatus();
@@ -131,8 +133,6 @@ namespace CentralControl
                 transform.position = Vector3.MoveTowards(transform.position, target, defaultSpeed * Time.deltaTime);
                 yield return null;
             }
-            
-            isMoving = false;
         }
 
         public void SetTargetIndicator(Vector3 position)
@@ -148,9 +148,24 @@ namespace CentralControl
             get { return isMoving; }
         }
 
+        public bool IsPicking
+        {
+            get { return isPicking; }
+        }
+
         public bool IsAvailable
         {
             get { return ordersQueue.Count < MaxOrder; }
+        }
+
+        public bool IsOnTask
+        {
+            get { return isMoving || isPicking; }
+        }
+
+        public bool IsFree
+        {
+            get { return !isMoving && !isPicking; }
         }
 
         public int GetRobotOrdersQueueCount()
@@ -161,6 +176,7 @@ namespace CentralControl
         private void UpdateRobotStatus()
         {
             isMoving = false;
+            isPicking = false;
             Debug.Log($"Robot {Id} status updated to free");
         }
 

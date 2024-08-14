@@ -15,6 +15,21 @@ namespace CentralControl
 
         public Order(string id, Vector3 destination, PickingPoint pickingPoint, float executionTime)
         {
+            if (string.IsNullOrEmpty(id))
+            {
+                throw new ArgumentNullException(nameof(id), "Order id cannot be null or empty.");
+            }
+
+            if (destination == null)
+            {
+                throw new ArgumentNullException(nameof(destination), "Order destination cannot be null.");
+            }
+
+            if (pickingPoint == null)
+            {
+                throw new ArgumentNullException(nameof(pickingPoint), "Order picking point cannot be null.");
+            }
+            
             this.Id = id;
             this.Destination = destination;
             this.PickingPoint = pickingPoint;

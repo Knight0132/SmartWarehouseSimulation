@@ -340,8 +340,9 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   mapLoader: {fileID: 1182216409}
   targetIndicator: {fileID: 5046057382194650421, guid: a2cba8e53abde44258ea6725fabbb9c2, type: 3}
+  selectedAlgorithm: 2
   defaultSpeed: 5
-  MaxOrder: 5
+  MaxOrder: 20
 --- !u!4 &799760311
 Transform:
   m_ObjectHideFlags: 0
@@ -606,6 +607,7 @@ MonoBehaviour:
   length: 20
   interval: 5
   orderCount: 5
+  correctionFactor: 0.1
 --- !u!4 &1634256792
 Transform:
   m_ObjectHideFlags: 0

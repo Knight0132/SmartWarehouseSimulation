@@ -108,36 +108,67 @@ namespace CentralControl
         private void DispatchOrders()
         {
             var orders = orderManager.GetAllOrders();
-            // Debug.Log($"Dispatching {orders.Count} orders.");
+            Debug.Log($"Dispatching {orders.Count} orders.");
             foreach (var order in orders)
             {
-                try
+                bool orderAssigned = false;
+                while (!orderAssigned)
                 {
-                    if (order.Destination == null)
+                    try
                     {
-                        Debug.LogError($"Order {order.Id} has null destination.");
-                        continue;
+                        Debug.Log($"Processing order {order?.Id}");
+
+                        if (order.Destination == null)
+                        {
+                            Debug.LogError($"Order {order.Id} has null destination.");
+                            break;
+                        }
+
+                        Debug.Log($"Trying to find the closest robot for order {order.Id} with destination {order.Destination}");
+                        RobotController closestRobot = robotManager.GetClosestAvailableRobot(order.Destination);
+                        Debug.Log($"Closest robot for order {order.Id} found: {closestRobot?.Id}");
+
+                        //寻找最近的机器人（两个策略——1.最近的available机器人；2.附近没有available机器人，选择最近的free机器人）
+                        //将来考虑使用Kmeans聚类来找available机器人
+                        if (closestRobot == null)
+                        {
+                            robotManager.CheckRobotStatus();
+                            Debug.LogError($"No available robot for order {order.Id}. Trying to find closest free robot");
+                            
+                            closestRobot = robotManager.GetClosestFreeRobot(order.Destination);
+                            Debug.Log($"Closest free robot for order {order.Id} found: {closestRobot?.Id}");
+                        }
+
+                        if (closestRobot == null)
+                        {
+                            Debug.LogError($"No available or free robot for order {order.Id}.");
+                            continue;
+                        }
+                        if (closestRobot.IsAvailable)
+                        {
+                            Debug.Log($"Assigning order {order.Id} to robot {closestRobot.Id}");
+                            closestRobot.ReceiveOrder(order);
+                            Debug.Log($"Order {order.Id} assigned to robot {closestRobot.Id}");
+                            orderAssigned = true;
+                        }
+                        else if (closestRobot.IsFree)
+                        {
+                            Debug.Log($"Assigning order {order.Id} to free robot {closestRobot.Id}");
+                            closestRobot.ReceiveOrder(order);
+                            Debug.Log($"Order {order.Id} assigned to free robot {closestRobot.Id}");
+                            orderAssigned = true;
+                        }
+                        else
+                        {
+                            Debug.Log($"Robot {closestRobot.Id} is not available or free.");
+                            continue;
+                        }
                     }
-                    RobotController closestRobot = robotManager.GetClosestAvailableRobot(order.Destination);
-                    if (closestRobot == null)
+                    catch (System.Exception ex)
                     {
-                        robotManager.CheckRobotStatus();
-                        Debug.LogError($"No available robot for order {order.Id}.");
-                        continue;
+                        Debug.LogError($"Error dispatching order {order.Id}: {ex.Message}");
+                        break;
                     }
-                    if (closestRobot.IsAvailable)
-                    {
-                        closestRobot.ReceiveOrder(order);
-                        Debug.Log($"Order {order.Id} assigned to robot {closestRobot.Id}");
-                    }
-                    else
-                    {
-                        Debug.Log($"Robot {closestRobot.Id} is full.");
-                    }
-                }
-                catch (System.Exception ex)
-                {
-                    Debug.LogError($"Error dispatching order {order.Id}: {ex.Message}");
                 }
             }
         }
