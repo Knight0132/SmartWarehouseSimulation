@@ -61,13 +61,6 @@ namespace PathPlanning
                 {
                     bool sequence = false;
                     RoutePoint neighborNode = graph.GetRoutePointFormConnectionPoint(neighbor);
-
-                    if (neighborNode == null)
-                    {
-                        UnityEngine.Debug.LogError($"neighborNode is null for neighbor: {neighbor.Id}");
-                        continue;
-                    }
-
                     Layer layerOfNeighbor = graph.GetLayerFromConnectionPoint(neighbor, sequence);
                     
                     float currentSpeed = speed;
@@ -109,7 +102,7 @@ namespace PathPlanning
                 if (!previous.ContainsKey(current))
                 {
                     UnityEngine.Debug.LogError($"Previous dictionary does not contain the key: {current}");
-                    return new List<Tuple<ConnectionPoint, float>>();
+                    break;
                 }
 
                 path.Add(new Tuple<ConnectionPoint, float>(current.ConnectionPoint, currentSpeed));

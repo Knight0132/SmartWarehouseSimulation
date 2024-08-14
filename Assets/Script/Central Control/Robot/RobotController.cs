@@ -24,33 +24,38 @@ namespace CentralControl
         private bool isPicking = false;
         private Queue<Order> ordersQueue = new Queue<Order>();
 
-        void Update()
-        {
-            if (!isMoving && !isPicking && ordersQueue.Count > 0)
-            {
-                StartNextOrder();
-            }
-        }
-
         public void InitializeRobot(int id, IndoorSpace indoorSpace, Graph graph)
         {
             this.Id = id;
             this.indoorSpace = indoorSpace;
-            this.graph = graph; 
+            this.graph = graph;
 
             isMoving = false;
             isPicking = false;
             ordersQueue.Clear();
-            
         }
 
         public void ReceiveOrder(Order order)
         {
-            ordersQueue.Enqueue(order);
-            Debug.Log($"Robot {Id} received order {order.Id}");
-            if (!isMoving && !isPicking)
+            if (order.AssignedRobotId == null || order.AssignedRobotId == this.Id)
             {
-                StartNextOrder();
+                if (!ordersQueue.Contains(order))
+                {
+                    ordersQueue.Enqueue(order);
+                    Debug.Log($"Robot {Id} received order {order.Id}");
+                    if (!isMoving && !isPicking)
+                    {
+                        StartNextOrder();
+                    }
+                }
+                else
+                {
+                    Debug.LogError($"Order {order.Id} is already in the queue of Robot {Id}");
+                }
+            }
+            else
+            {
+                Debug.LogError($"Order {order.Id} is already assigned to another robot {order.AssignedRobotId}");
             }
         }
 
@@ -68,6 +73,13 @@ namespace CentralControl
         {
             PickingPoint pickingPoint = order.PickingPoint;
             CellSpace correspondingCellSpace = indoorSpace.GetCellSpaceFromId(pickingPoint.Id);
+
+            if (correspondingCellSpace == null)
+            {
+                Debug.LogError($"Corresponding CellSpace for PickingPoint {pickingPoint.Id} is null.");
+                return;
+            }
+            
             Point point = (Point)correspondingCellSpace.Node;
             Vector3 targetPosition = new Vector3((float)point.X, 0, (float)point.Y);
             SetTargetIndicator(targetPosition);
@@ -89,14 +101,15 @@ namespace CentralControl
                 {
                     Debug.Log("Path is empty");
                     isMoving = false;
+                    UpdateRobotStatus();
                 }
             }
             else
             {
                 Debug.Log("Start or end point is null");
                 isMoving = false;
+                UpdateRobotStatus();
             }
-        
         }
 
         IEnumerator MoveAlongPath(List<Tuple<ConnectionPoint, float>> path, float executionTime, Vector3 finalTargetPosition)
@@ -143,6 +156,25 @@ namespace CentralControl
             }
         }
 
+        
+        public int GetRobotOrdersQueueCount
+        {
+            get { return ordersQueue.Count; }
+        }
+
+        public List<string> listOrdersQueue
+        {
+            get
+            {
+                List<string> list = new List<string>();
+                foreach (Order order in ordersQueue)
+                {
+                    list.Add(order.Id);
+                }
+                return list;
+            }
+        }
+
         public bool IsMoving
         {
             get { return isMoving; }
@@ -168,17 +200,16 @@ namespace CentralControl
             get { return !isMoving && !isPicking; }
         }
 
-        public int GetRobotOrdersQueueCount()
-        {
-            return ordersQueue.Count;
-        }
-
         private void UpdateRobotStatus()
         {
             isMoving = false;
             isPicking = false;
             Debug.Log($"Robot {Id} status updated to free");
-        }
 
+            if (ordersQueue.Count > 0)
+            {
+                StartNextOrder();
+            }
+        }
     }
 }

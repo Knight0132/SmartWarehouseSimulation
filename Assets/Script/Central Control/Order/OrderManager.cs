@@ -9,16 +9,10 @@ namespace CentralControl
     {
         private List<Order> orders = new List<Order>();
 
-        public void AddOrder(string id, Vector3 coordinates, PickingPoint pickingPoint, float executionTime)
+        public void AddOrder(Order order)
         {
-            Order newOrder = new Order(id, coordinates, pickingPoint, executionTime);
-
-            if (newOrder == null)
-            {
-                throw new System.ArgumentNullException(nameof(newOrder), "Order cannot be null.");
-            }
-
-            orders.Add(newOrder);
+            orders.Add(order);
+            Debug.Log($"Added new order: {order.Id} at {order.Destination}");
         }
 
         public List<Order> GetAllOrders()

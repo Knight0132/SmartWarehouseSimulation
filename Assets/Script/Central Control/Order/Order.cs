@@ -12,6 +12,7 @@ namespace CentralControl
         public DateTime CreationTime { get; private set; }
         public DateTime Priority => CreationTime;  // 优先级 -> 创建时间
         public float ExecutionTime { get; private set; }
+        public int? AssignedRobotId { get; set; }
 
         public Order(string id, Vector3 destination, PickingPoint pickingPoint, float executionTime)
         {
@@ -35,6 +36,7 @@ namespace CentralControl
             this.PickingPoint = pickingPoint;
             this.CreationTime = DateTime.Now;
             this.ExecutionTime = executionTime;
+            this.AssignedRobotId = null;
         }
     }
 }

@@ -97,7 +97,7 @@ namespace CentralControl
             {
                 if (!robot.IsAvailable)
                 {
-                    Debug.Log($"Robot {robot.Id} is full.");
+                    Debug.Log($"Robot {robot.Id} is full with {robot.GetRobotOrdersQueueCount} orders: {string.Join(", ", robot.listOrdersQueue)}");
                 }
                 if (robot.IsFree)
                 {
