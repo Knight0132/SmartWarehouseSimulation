@@ -342,7 +342,7 @@ MonoBehaviour:
   targetIndicator: {fileID: 5046057382194650421, guid: a2cba8e53abde44258ea6725fabbb9c2, type: 3}
   selectedAlgorithm: 2
   defaultSpeed: 5
-  MaxOrder: 20
+  MaxOrder: 1
 --- !u!4 &799760311
 Transform:
   m_ObjectHideFlags: 0
@@ -471,7 +471,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 57385e235f8d94f4789d7f6aa8639f4d, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  jsonFile: {fileID: 4900000, guid: 16747899dbd4d40c7adce5f988a00fe8, type: 3}
+  jsonFile: {fileID: 4900000, guid: 380f9842717a94809999360bd47626ae, type: 3}
   mapVisualizer: {fileID: 383294734}
   width: 25
   length: 20
@@ -520,7 +520,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   robotPrefab: {fileID: 5062554021843230369, guid: 071857d602b9248e0a6e9d068cf8f493, type: 3}
-  numberOfRobots: 10
+  numberOfRobots: 5
   mapLoader: {fileID: 1182216409}
   targetIndicatorPrefab: {fileID: 1397648222}
   width: 25
@@ -605,7 +605,7 @@ MonoBehaviour:
   mapLoader: {fileID: 1182216409}
   width: 25
   length: 20
-  interval: 5
+  interval: 10
   orderCount: 5
   correctionFactor: 0.1
 --- !u!4 &1634256792

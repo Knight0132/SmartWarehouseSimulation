@@ -115,4 +115,4 @@ MonoBehaviour:
   targetIndicator: {fileID: 0}
   selectedAlgorithm: 2
   defaultSpeed: 5
-  MaxOrder: 20
+  MaxOrder: 1

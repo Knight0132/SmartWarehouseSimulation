@@ -23,6 +23,7 @@ namespace CentralControl
         private bool isMoving = false;
         private bool isPicking = false;
         private Queue<Order> ordersQueue = new Queue<Order>();
+        public readonly object orderLock = new object();
 
         public void InitializeRobot(int id, IndoorSpace indoorSpace, Graph graph)
         {
@@ -37,35 +38,41 @@ namespace CentralControl
 
         public void ReceiveOrder(Order order)
         {
-            if (order.AssignedRobotId == null || order.AssignedRobotId == this.Id)
+            lock (orderLock)
             {
-                if (!ordersQueue.Contains(order))
+                if (order.AssignedRobotId == null || order.AssignedRobotId == this.Id)
                 {
-                    ordersQueue.Enqueue(order);
-                    Debug.Log($"Robot {Id} received order {order.Id}");
-                    if (!isMoving && !isPicking)
+                    if (!ordersQueue.Contains(order))
                     {
-                        StartNextOrder();
+                        ordersQueue.Enqueue(order);
+                        Debug.Log($"Robot {Id} received order {order.Id}");
+                        if (!isMoving && !isPicking)
+                        {
+                            StartNextOrder();
+                        }
+                    }
+                    else
+                    {
+                        Debug.LogError($"Order {order.Id} is already in the queue of Robot {Id}");
                     }
                 }
                 else
                 {
-                    Debug.LogError($"Order {order.Id} is already in the queue of Robot {Id}");
+                    Debug.LogError($"Order {order.Id} is already assigned to another robot {order.AssignedRobotId}");
                 }
-            }
-            else
-            {
-                Debug.LogError($"Order {order.Id} is already assigned to another robot {order.AssignedRobotId}");
             }
         }
 
         private void StartNextOrder()
         {
-            if (ordersQueue.Count > 0)
+            lock (orderLock)
             {
-                Order order = ordersQueue.Dequeue();
-                Debug.Log($"Robot {Id} starts order {order.Id}");
-                ExecuteOrder(order);
+                if (ordersQueue.Count > 0)
+                {
+                    Order order = ordersQueue.Dequeue();
+                    Debug.Log($"Robot {Id} starts order {order.Id}");
+                    ExecuteOrder(order);
+                }
             }
         }
 
@@ -202,13 +209,16 @@ namespace CentralControl
 
         private void UpdateRobotStatus()
         {
-            isMoving = false;
-            isPicking = false;
-            Debug.Log($"Robot {Id} status updated to free");
+            lock (orderLock)
+                {
+                isMoving = false;
+                isPicking = false;
+                Debug.Log($"Robot {Id} status updated to free");
 
-            if (ordersQueue.Count > 0)
-            {
-                StartNextOrder();
+                if (ordersQueue.Count > 0)
+                {
+                    StartNextOrder();
+                }
             }
         }
     }

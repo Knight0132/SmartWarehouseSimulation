@@ -22,6 +22,7 @@ namespace CentralControl
 
         private bool generatingOrders;
         private List<Order> pendingOrders = new List<Order>();
+        private readonly object dispatchLock = new object();
 
         async void Start()
         {
@@ -94,66 +95,66 @@ namespace CentralControl
         private void DispatchOrders()
         {
             Debug.Log($"Dispatching {pendingOrders.Count} pending orders.");
-            foreach (var order in pendingOrders.ToList())
+            lock (dispatchLock)
             {
-                if (order.AssignedRobotId != null)
+                foreach (var order in pendingOrders.ToList())
                 {
-                    Debug.Log($"Order {order.Id} is already assigned to robot {order.AssignedRobotId}. Skipping.");
-                    continue;
-                }
-
-                bool orderAssigned = false;
-                while (!orderAssigned)
-                {
-                    try
+                    if (order.AssignedRobotId != null)
                     {
-                        Debug.Log($"Processing order {order?.Id}");
-
-                        if (order.Destination == null)
-                        {
-                            Debug.LogError($"Order {order.Id} has null destination.");
-                            break;
-                        }
-
-                        Debug.Log($"Trying to find the closest robot for order {order.Id} with destination {order.Destination}");
-                        RobotController closestRobot = robotManager.GetClosestAvailableRobot(order.Destination);
-                        Debug.Log($"Closest robot for order {order.Id} found: {closestRobot?.Id}");
-
-                        //寻找最近的机器人（两个策略——1.最近的available机器人；2.附近没有available机器人，选择最近的free机器人）
-                        //将来考虑使用聚类来找available机器人
-                        if (closestRobot == null)
-                        {
-                            robotManager.CheckRobotStatus();
-                            Debug.LogError($"No available robot for order {order.Id}. Trying to find closest free robot");
-                            
-                            closestRobot = robotManager.GetClosestFreeRobot(order.Destination);
-                            Debug.Log($"Closest free robot for order {order.Id} found: {closestRobot?.Id}");
-                        }
-
-                        if (closestRobot == null)
-                        {
-                            Debug.LogError($"No available or free robot for order {order.Id}.");
-                            continue;
-                        }
-                        if (closestRobot.IsAvailable || closestRobot.IsFree)
-                        {
-                            Debug.Log($"Assigning order {order.Id} to robot {closestRobot.Id}");
-                            closestRobot.ReceiveOrder(order);
-                            order.AssignedRobotId = closestRobot.Id;
-                            Debug.Log($"Order {order.Id} assigned to robot {closestRobot.Id}");
-                            orderAssigned = true;
-                        }
-                        else
-                        {
-                            Debug.Log($"Robot {closestRobot.Id} is not available or free.");
-                            break;
-                        }
+                        Debug.Log($"Order {order.Id} is already assigned to robot {order.AssignedRobotId}. Skipping.");
+                        continue;
                     }
-                    catch (System.Exception ex)
+
+                    bool orderAssigned = false;
+                    while (!orderAssigned)
                     {
-                        Debug.LogError($"Error dispatching order {order.Id}: {ex.Message}");
-                        Debug.LogError($"Stack Trace: {ex.StackTrace}");
-                        break;
+                        try
+                        {
+                            Debug.Log($"Processing order {order?.Id}");
+                            Debug.Log($"Trying to find the closest robot for order {order.Id} with destination {order.Destination}");
+                            RobotController closestRobot = robotManager.GetClosestAvailableRobot(order.Destination);
+                            Debug.Log($"Closest robot for order {order.Id} found: {closestRobot?.Id}");
+
+                            //寻找最近的机器人（两个策略——1.最近的available机器人；2.附近没有available机器人，选择最近的free机器人）
+                            //将来考虑使用聚类来找available机器人
+                            if (closestRobot == null)
+                            {
+                                robotManager.CheckRobotStatus();
+                                Debug.LogError($"No available robot for order {order.Id}. Trying to find closest free robot");
+                                
+                                closestRobot = robotManager.GetClosestFreeRobot(order.Destination);
+                                Debug.Log($"Closest free robot for order {order.Id} found: {closestRobot?.Id}");
+                            }
+
+                            if (closestRobot == null)
+                            {
+                                Debug.LogError($"No available or free robot for order {order.Id}.");
+                                continue;
+                            }
+
+                            lock (closestRobot.orderLock)
+                            { 
+                                if (closestRobot.IsAvailable || closestRobot.IsFree)
+                                {
+                                    Debug.Log($"Assigning order {order.Id} to robot {closestRobot.Id}");
+                                    closestRobot.ReceiveOrder(order);
+                                    order.AssignedRobotId = closestRobot.Id;
+                                    Debug.Log($"Order {order.Id} assigned to robot {closestRobot.Id}");
+                                    orderAssigned = true;
+                                }
+                                else
+                                {
+                                    Debug.Log($"Robot {closestRobot.Id} is not available or free.");
+                                    break;
+                                }
+                            }
+                        }
+                        catch (System.Exception ex)
+                        {
+                            Debug.LogError($"Error dispatching order {order.Id}: {ex.Message}");
+                            Debug.LogError($"Stack Trace: {ex.StackTrace}");
+                            break;
+                        }
                     }
                 }
             }
