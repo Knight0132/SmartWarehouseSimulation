@@ -27,7 +27,6 @@ namespace Map {
         private async void Start()
         {
             indoorSpace = await LoadJsonAsync();
-            Debug.Log(indoorSpace.ToJson());
 
             if (indoorSpace == null)
             {
@@ -53,21 +52,13 @@ namespace Map {
                     Converters = new List<JsonConverter> { new GeometryConverter() }
                 };
 
-                try
+                var indoorSpace = JsonConvert.DeserializeObject<IndoorSpace>(jsonText, settings);
+                if (indoorSpace != null)
                 {
-                    var indoorSpace = JsonConvert.DeserializeObject<IndoorSpace>(jsonText, settings);
-                    if (indoorSpace != null)
-                    {
-                        indoorSpace.LoadProperties();
-                    }
-                    Debug.Log("JSON Deserialized successfully");
-                    return indoorSpace;
+                    indoorSpace.LoadProperties();
                 }
-                catch (Exception ex)
-                {
-                    Debug.LogError("Error during JSON deserialization: " + ex.Message);
-                    return null;
-                }
+                Debug.Log("JSON Deserialized successfully");
+                return indoorSpace;
             });
         }
 

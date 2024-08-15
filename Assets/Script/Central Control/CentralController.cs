@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Collections;
 using System.Linq;
@@ -8,7 +9,7 @@ using Map;
 
 namespace CentralControl
 {
-    public class CentralController: MonoBehaviour
+    public class CentralController : MonoBehaviour
     {
         public OrderManager orderManager;
         public RobotManager robotManager;
@@ -22,13 +23,23 @@ namespace CentralControl
 
         private bool generatingOrders;
         private List<Order> pendingOrders = new List<Order>();
+        private List<Order> unassignedOrders = new List<Order>();
         private readonly object dispatchLock = new object();
+
+        public static event EventHandler<RobotStatusEventArgs> OnRobotBecameFree;
 
         async void Start()
         {
             await InitializeCentralControllerAsync();
             await InitializeRobotsAsync();
             StartCoroutine(StartGeneratingOrders());
+
+            OnRobotBecameFree += HandleRobotBecameFree;
+        }
+
+        private void OnDisable()
+        {
+            OnRobotBecameFree -= HandleRobotBecameFree;
         }
 
         private async Task InitializeCentralControllerAsync()
@@ -63,8 +74,6 @@ namespace CentralControl
                 Debug.Log("Starting to generate orders...");
                 GenerateRandomOrders();
                 DispatchOrders();
-                CheckUnassignedOrders();
-                pendingOrders.Clear();
                 yield return new WaitForSeconds(interval);
             }
         }
@@ -73,103 +82,146 @@ namespace CentralControl
         {
             pendingOrders.Clear();
 
-            int i = 0;
-            while (i < orderCount)
+            for (int i = 0; i < orderCount; i++)
             {
-                string id = System.Guid.NewGuid().ToString();
-                int randomIndex = (int)Random.Range(0, indoorSpaceProvider.BusinessPoints.Count - 1);
-                CellSpace cellSpace = indoorSpaceProvider.BusinessPoints[randomIndex];
-                Vector3 position = new Vector3((float)cellSpace.Space.Centroid.X, 0, (float)cellSpace.Space.Centroid.Y);
-                float executionTime = Random.Range(0f * correctionFactor, 30f * correctionFactor);
-                PickingPoint pickingPointCellSpace = indoorSpaceProvider.GetPickingPointFromBusinessPoint(cellSpace);
-                
-                Order newOrder = new Order(id, position, pickingPointCellSpace, executionTime);
-                orderManager.AddOrder(newOrder);
-                pendingOrders.Add(newOrder);
-                
-                i++;
-                Debug.Log($"Generated order {id} at {cellSpace.Id} with execution time {executionTime}");
-            }
-        }
-
-        private void DispatchOrders()
-        {
-            Debug.Log($"Dispatching {pendingOrders.Count} pending orders.");
-            lock (dispatchLock)
-            {
-                foreach (var order in pendingOrders.ToList())
+                Order newOrder = CreateRandomOrder();
+                if (newOrder != null)
                 {
-                    if (order.AssignedRobotId != null)
-                    {
-                        Debug.Log($"Order {order.Id} is already assigned to robot {order.AssignedRobotId}. Skipping.");
-                        continue;
-                    }
-
-                    bool orderAssigned = false;
-                    while (!orderAssigned)
-                    {
-                        try
-                        {
-                            Debug.Log($"Processing order {order?.Id}");
-                            Debug.Log($"Trying to find the closest robot for order {order.Id} with destination {order.Destination}");
-                            RobotController closestRobot = robotManager.GetClosestAvailableRobot(order.Destination);
-                            Debug.Log($"Closest robot for order {order.Id} found: {closestRobot?.Id}");
-
-                            //寻找最近的机器人（两个策略——1.最近的available机器人；2.附近没有available机器人，选择最近的free机器人）
-                            //将来考虑使用聚类来找available机器人
-                            if (closestRobot == null)
-                            {
-                                robotManager.CheckRobotStatus();
-                                Debug.LogError($"No available robot for order {order.Id}. Trying to find closest free robot");
-                                
-                                closestRobot = robotManager.GetClosestFreeRobot(order.Destination);
-                                Debug.Log($"Closest free robot for order {order.Id} found: {closestRobot?.Id}");
-                            }
-
-                            if (closestRobot == null)
-                            {
-                                Debug.LogError($"No available or free robot for order {order.Id}.");
-                                continue;
-                            }
-
-                            lock (closestRobot.orderLock)
-                            { 
-                                if (closestRobot.IsAvailable || closestRobot.IsFree)
-                                {
-                                    Debug.Log($"Assigning order {order.Id} to robot {closestRobot.Id}");
-                                    closestRobot.ReceiveOrder(order);
-                                    order.AssignedRobotId = closestRobot.Id;
-                                    Debug.Log($"Order {order.Id} assigned to robot {closestRobot.Id}");
-                                    orderAssigned = true;
-                                }
-                                else
-                                {
-                                    Debug.Log($"Robot {closestRobot.Id} is not available or free.");
-                                    break;
-                                }
-                            }
-                        }
-                        catch (System.Exception ex)
-                        {
-                            Debug.LogError($"Error dispatching order {order.Id}: {ex.Message}");
-                            Debug.LogError($"Stack Trace: {ex.StackTrace}");
-                            break;
-                        }
-                    }
+                    orderManager.AddOrder(newOrder);
+                    pendingOrders.Add(newOrder);
                 }
             }
         }
 
-        private void CheckUnassignedOrders()
+        private Order CreateRandomOrder()
         {
-            foreach (var order in pendingOrders)
+            string id = System.Guid.NewGuid().ToString();
+            int randomIndex = UnityEngine.Random.Range(0, indoorSpaceProvider.BusinessPoints.Count);
+            CellSpace cellSpace = indoorSpaceProvider.BusinessPoints[randomIndex];
+            Vector3 position = new Vector3((float)cellSpace.Space.Centroid.X, 0, (float)cellSpace.Space.Centroid.Y);
+
+            float executionTime = UnityEngine.Random.Range(0f, 30f) * correctionFactor;
+            PickingPoint pickingPointCellSpace = indoorSpaceProvider.GetPickingPointFromBusinessPoint(cellSpace);
+
+            if (pickingPointCellSpace == null)
             {
-                if (order.AssignedRobotId == null)
+                Debug.LogError($"Failed to get picking point for cell space {cellSpace.Id}");
+                return null;
+            }
+
+            Order newOrder = new Order(id, position, pickingPointCellSpace, executionTime);
+            Debug.Log($"Generated order {id} at {cellSpace.Id} with execution time {executionTime}");
+            return newOrder;
+        }
+
+        private void DispatchOrders()
+        {
+            Debug.Log($"Dispatching {pendingOrders.Count} pending orders and {unassignedOrders.Count} unassigned orders.");
+            lock (dispatchLock)
+            {
+                DispatchUnassignedOrders();
+                DispatchPendingOrders();
+            }
+        }
+
+        private void DispatchUnassignedOrders()
+        {
+            for (int i = unassignedOrders.Count - 1; i >= 0; i--)
+            {
+                if (TryAssignOrderToRobot(unassignedOrders[i]))
                 {
-                    Debug.LogError($"Order {order.Id} was not assigned to any robot {order.AssignedRobotId}.");
+                    unassignedOrders.RemoveAt(i);
+                }
+            }
+        }
+
+        private void DispatchPendingOrders()
+        {
+            foreach (var order in pendingOrders.ToList())
+            {
+                if (order.AssignedRobotId != null)
+                {
+                    Debug.Log($"Order {order.Id} is already assigned to robot {order.AssignedRobotId}. Skipping.");
+                    continue;
+                }
+
+                if (!TryAssignOrderToRobot(order))
+                {
+                    unassignedOrders.Add(order);
+                    Debug.Log($"Order {order.Id} could not be assigned and added to unassigned orders");
+                }
+            }
+            pendingOrders.Clear();
+        }
+
+        private bool TryAssignOrderToRobot(Order order)
+        {
+            if (order == null || string.IsNullOrEmpty(order.Id))
+            {
+                Debug.LogError("Invalid order encountered.");
+                return false;
+            }
+
+            try
+            {
+                Debug.Log($"Trying to find the closest robot for order {order.Id} with destination {order.Destination}");
+                RobotController closestRobot = robotManager.GetClosestRobot(order.Destination);
+
+                if (closestRobot == null)
+                {
+                    Debug.LogError($"No available or free robot for order {order.Id}.");
+                    return false;
+                }
+
+                Debug.Log($"Closest robot for order {order.Id} found: {closestRobot.Id}");
+
+                closestRobot.ReceiveOrder(order);
+                order.AssignedRobotId = closestRobot.Id;
+                Debug.Log($"Order {order.Id} assigned to robot {closestRobot.Id}");
+                return true;
+            }
+            catch (System.Exception ex)
+            {
+                Debug.LogError($"Error dispatching order {order.Id}: {ex.Message}");
+                Debug.LogError($"Stack Trace: {ex.StackTrace}");
+                return false;
+            }
+        }
+
+        public static void NotifyRobotFree(RobotController robot)
+        {
+            OnRobotBecameFree?.Invoke(null, new RobotStatusEventArgs(robot));
+        }
+
+        private void HandleRobotBecameFree(object sender, RobotStatusEventArgs e)
+        {
+            Debug.Log($"Robot {e.Robot.Id} became free. Attempting to assign unassigned order.");
+            AssignOrderToFreeRobot(e.Robot);
+        }
+
+        private void AssignOrderToFreeRobot(RobotController robot)
+        {
+            lock (dispatchLock)
+            {
+                if (unassignedOrders.Count > 0)
+                {
+                    var order = unassignedOrders[0];
+                    unassignedOrders.RemoveAt(0);
+                    if (TryAssignOrderToRobot(order))
+                    {
+                        Debug.Log($"Unassigned order {order.Id} assigned to newly freed robot {robot.Id}");
+                    }
+                    else
+                    {
+                        unassignedOrders.Add(order);
+                        Debug.LogError($"Failed to assign order {order.Id} to newly freed robot {robot.Id}");
+                    }
+                }
+                else
+                {
+                    Debug.Log($"No unassigned orders for newly freed robot {robot.Id}");
                 }
             }
         }
     }
 }
-

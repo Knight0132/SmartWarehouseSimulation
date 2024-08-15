@@ -26,69 +26,105 @@ namespace CentralControl
         public async Task InitializeRobotsAsync()
         {
             indoorSpace = await mapLoader.LoadJsonAsync();
+            if (indoorSpace == null)
+            {
+                Debug.LogError("Failed to load indoor space data.");
+                return;
+            }
+
             width = mapLoader.width;
             length = mapLoader.length;
-            graph = mapLoader.GenerateRouteGraph(indoorSpace); 
-            
-            int i = 0;
-            while (i < numberOfRobots)
+            graph = mapLoader.GenerateRouteGraph(indoorSpace);
+            if (graph == null)
             {
-                await Task.Delay(5);
-                Vector3 initialPosition = new Vector3(Random.Range(0, width), 0, Random.Range(0, length));
-                CellSpace cellSpace = indoorSpace.GetCellSpaceFromCoordinates(initialPosition);
-                Point point = (Point)cellSpace.Node;
-                Vector3 position = new Vector3((float)point.X, 0, (float)point.Y);
-                if (cellSpace != null && cellSpace.IsNavigable())
+                Debug.LogError("Failed to generate route graph.");
+                return;
+            }
+            
+            for (int i = 0; i < numberOfRobots; i++)
+            {
+                await Task.Delay(1);
+                Vector3 initialPosition = GetValidInitialPosition();
+                if (initialPosition != Vector3.zero)
                 {
-                    GameObject robotObj = Instantiate(robotPrefab, position, Quaternion.identity);
-                    RobotController robot = robotObj.GetComponent<RobotController>();
-                    if (robot != null)
-                    {
-                        robot.InitializeRobot(i + 1, indoorSpace, graph);
-
-                        Transform targetIndicatorInstance = Instantiate(targetIndicatorPrefab);
-                        robot.mapLoader = this.mapLoader;
-                        robot.targetIndicator = targetIndicatorInstance;
-
-                        robots.Add(robot);
-                        i++;
-                    }
+                    CreateRobot(i + 1, initialPosition);
+                }
+                else
+                {
+                    Debug.LogWarning($"Failed to find valid position for robot {i + 1}");
                 }
             }
         }
 
-        public RobotController GetClosestFreeRobot(Vector3 position)
+        private Vector3 GetValidInitialPosition()
         {
-            var closestFreeRobot = robots.Where(robot => robot.IsFree)
-                                         .OrderBy(robot => Vector3.Distance(robot.transform.position, position))
-                                         .FirstOrDefault();
-            
-            if (closestFreeRobot != null)
+            for (int attempts = 0; attempts < 10; attempts++)
             {
-                Debug.Log($"Closest free robot is {closestFreeRobot.Id} at position {closestFreeRobot.transform.position}");
+                Vector3 initialPosition = new Vector3(Random.Range(0, width), 0, Random.Range(0, length));
+                CellSpace cellSpace = indoorSpace.GetCellSpaceFromCoordinates(initialPosition);
+                if (cellSpace != null && cellSpace.IsNavigable())
+                {
+                    Point point = (Point)cellSpace.Node;
+                    return new Vector3((float)point.X, 0, (float)point.Y);
+                }
             }
-            else
-            {
-                Debug.Log("No free robot found.");
-            }
-            return closestFreeRobot;
+            return Vector3.zero;
         }
 
-        public RobotController GetClosestAvailableRobot(Vector3 position)
+        private void CreateRobot(int id, Vector3 position)
         {
-            var closestAvailableRobot = robots.Where(robot => robot.IsAvailable)
-                                              .OrderBy(robot => Vector3.Distance(robot.transform.position, position))
-                                              .FirstOrDefault();
-
-            if (closestAvailableRobot != null)
+            GameObject robotObj = Instantiate(robotPrefab, position, Quaternion.identity);
+            RobotController robot = robotObj.GetComponent<RobotController>();
+            if (robot != null)
             {
-                Debug.Log($"Closest available robot is {closestAvailableRobot.Id} at position {closestAvailableRobot.transform.position}");
+                robot.InitializeRobot(id, indoorSpace, graph);
+
+                Transform targetIndicatorInstance = Instantiate(targetIndicatorPrefab);
+                robot.mapLoader = this.mapLoader;
+                robot.targetIndicator = targetIndicatorInstance;
+
+                robots.Add(robot);
+                Debug.Log($"Robot {id} created at position {position}");
             }
             else
             {
-                Debug.Log("No available robot found.");
+                Debug.LogError($"Failed to get RobotController component for robot {id}");
             }
-            return closestAvailableRobot;
+        }
+
+        public RobotController GetClosestRobot(Vector3 position)
+        {
+            var closestAvailableRobot = GetClosestRobotByCondition(position, robot => robot.IsAvailable);
+            if (closestAvailableRobot != null)
+            {
+                return closestAvailableRobot;
+            }
+
+            var closestFreeRobot = GetClosestRobotByCondition(position, robot => robot.IsFree);
+            if (closestFreeRobot != null)
+            {
+                return closestFreeRobot;
+            }
+
+            Debug.Log("No suitable robot found.");
+            return null;
+        }
+
+        private RobotController GetClosestRobotByCondition(Vector3 position, System.Func<RobotController, bool> condition)
+        {
+            var closestRobot = robots.Where(condition)
+                                     .OrderBy(robot => Vector3.Distance(robot.transform.position, position))
+                                     .FirstOrDefault();
+
+            if (closestRobot != null)
+            {
+                Debug.Log($"Closest robot meeting condition is {closestRobot.Id} at position {closestRobot.transform.position}");
+            }
+            else
+            {
+                Debug.Log("No robot meeting condition found.");
+            }
+            return closestRobot;
         }
 
         public void CheckRobotStatus()
@@ -97,7 +133,7 @@ namespace CentralControl
             {
                 if (!robot.IsAvailable)
                 {
-                    Debug.Log($"Robot {robot.Id} is full with {robot.GetRobotOrdersQueueCount} orders: {string.Join(", ", robot.listOrdersQueue)}");
+                    Debug.Log($"Robot {robot.Id} is busy with {robot.GetRobotOrdersQueueCount} orders: {string.Join(", ", robot.listOrdersQueue)}");
                 }
                 if (robot.IsFree)
                 {
