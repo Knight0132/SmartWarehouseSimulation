@@ -26,6 +26,28 @@ namespace CentralControl
         private bool isPicking = false;
         private ConcurrentQueue<Order> ordersQueue = new ConcurrentQueue<Order>();
         private int isProcessingOrder = 0;
+        private bool isProcessingOrdersRunning = false;
+        private Coroutine statusCheckCoroutine;
+
+        private void Start()
+        {
+            statusCheckCoroutine = StartCoroutine(PeriodicStatusCheck());
+        }
+
+        private IEnumerator PeriodicStatusCheck()
+        {
+            while (true)
+            {
+                yield return new WaitForSeconds(10f);
+                if (!isMoving && !isPicking && ordersQueue.Count > 0 && !isProcessingOrdersRunning)
+                {
+                    Debug.LogWarning($"Robot {Id} is idle but has orders. Restarting order processing.");
+                    StartCoroutine(ProcessOrders());
+                }
+                Debug.Log($"Robot {Id} status - Moving: {isMoving}, Picking: {isPicking}, Orders: {ordersQueue.Count}, Processing: {isProcessingOrdersRunning}");
+            }
+        }
+
 
         public void InitializeRobot(int id, IndoorSpace indoorSpace, Graph graph)
         {
@@ -48,11 +70,17 @@ namespace CentralControl
 
             if (order.AssignedRobotId == null || order.AssignedRobotId == Id)
             {
+                if (ordersQueue.Any(o => o.Id == order.Id))
+                {
+                    Debug.LogWarning($"Robot {Id}: Order {order.Id} is already in the queue. Skipping.");
+                    return;
+                }
+
                 order.AssignedRobotId = Id;
                 ordersQueue.Enqueue(order);
                 Debug.Log($"Robot {Id} received order {order.Id}");
                 
-                if (Interlocked.CompareExchange(ref isProcessingOrder, 1, 0) == 0)
+                if (Interlocked.CompareExchange(ref isProcessingOrder, 1, 0) == 0 && !isProcessingOrdersRunning)
                 {
                     StartCoroutine(ProcessOrders());
                 }
@@ -65,6 +93,7 @@ namespace CentralControl
 
         private IEnumerator ProcessOrders()
         {
+            isProcessingOrdersRunning = true;
             while (ordersQueue.TryDequeue(out Order order))
             {
                 Debug.Log($"Robot {Id} starts processing order {order.Id}");
@@ -74,15 +103,21 @@ namespace CentralControl
             Debug.Log($"Robot {Id} has no more orders to execute");
             CentralController.NotifyRobotFree(this);
             Interlocked.Exchange(ref isProcessingOrder, 0);
+            isProcessingOrdersRunning = false;
         }
 
         private IEnumerator ExecuteOrderCoroutine(Order order)
         {
+            float startTime = Time.time;
+            float timeout = 45f;
+
             if (!ValidateOrder(order))
             {
+                Debug.LogError($"Robot {Id}: Order {order.Id} validation failed.");
+                FailOrder(order);
                 yield break;
             }
-
+            
             Vector3 targetPosition = GetTargetPosition(order.PickingPoint);
             SetTargetIndicator(targetPosition);
             isMoving = true;
@@ -95,6 +130,17 @@ namespace CentralControl
             }
             else
             {
+                FailOrder(order);
+            }
+
+            while (isMoving && Time.time - startTime < timeout)
+            {
+                yield return null;
+            }
+
+            if (Time.time - startTime >= timeout)
+            {
+                Debug.LogError($"Robot {Id}: Order {order.Id} execution timed out");
                 FailOrder(order);
             }
         }
@@ -129,13 +175,27 @@ namespace CentralControl
             RoutePoint startPoint = graph.GetRoutePointFromCoordinate(transform.position, true);
             RoutePoint endPoint = graph.GetRoutePointFromCoordinate(targetPosition, true);
 
+            Debug.Log($"Robot {Id}: Planning path from {transform.position} to {targetPosition}");
+            Debug.Log($"Start RoutePoint: {startPoint?.ConnectionPoint.Id}, End RoutePoint: {endPoint?.ConnectionPoint.Id}");
+
             if (startPoint == null || endPoint == null)
             {
-                Debug.LogError($"Robot {Id}: Invalid start or end point for path planning");
+                Debug.LogError($"Robot {Id}: Invalid start or end point for path planning. Start: {startPoint}, End: {endPoint}");
                 return null;
             }
 
-            return PathPlanner.FindPath(selectedAlgorithm, graph, startPoint, endPoint, defaultSpeed);
+            var path = PathPlanner.FindPath(selectedAlgorithm, graph, startPoint, endPoint, defaultSpeed);
+            
+            if (path == null || path.Count == 0)
+            {
+                Debug.LogError($"Robot {Id}: Failed to find path from {startPoint.ConnectionPoint.Id} to {endPoint.ConnectionPoint.Id}");
+            }
+            else
+            {
+                Debug.Log($"Robot {Id}: Path found with {path.Count} steps");
+            }
+
+            return path;
         }
 
         private void FailOrder(Order order)
@@ -149,6 +209,12 @@ namespace CentralControl
         {
             foreach (var step in path)
             {
+                if (!isMoving)
+                {
+                    Debug.LogWarning($"Robot {Id}: Movement interrupted");
+                    yield break;
+                }
+
                 yield return StartCoroutine(MoveToPosition(GetPointVector3(step.Item1.Point), step.Item2));
             }
 
@@ -157,12 +223,13 @@ namespace CentralControl
             Debug.Log($"Robot {Id} reached destination, executing order for {executionTime} seconds");
             
             isMoving = false;
+            Debug.Log($"Robot {Id} finished moving, starting picking operation");
             isPicking = true;
-            
+
             yield return new WaitForSeconds(executionTime);
-            
+            Debug.Log($"Robot {Id} finished picking operation");
+
             UpdateRobotStatus();
-            Debug.Log($"Robot {Id} completed order");
         }
 
         private IEnumerator MoveToPosition(Vector3 target, float speed)
@@ -202,6 +269,7 @@ namespace CentralControl
         public bool IsAvailable => ordersQueue.Count < MaxOrder;
         public bool IsOnTask => isMoving || isPicking;
         public bool IsFree => !isMoving && !isPicking;
+        public bool IsProcessingOrders => isProcessingOrdersRunning;
 
         private void UpdateRobotStatus()
         {
@@ -209,19 +277,52 @@ namespace CentralControl
             isMoving = false;
             isPicking = false;
 
-            if (wasBusy)
+            Debug.Log($"Robot {Id} status updated. Was busy: {wasBusy}, Orders remaining: {ordersQueue.Count}");
+
+            if (ordersQueue.Count > 0)
             {
-                Debug.Log($"Robot {Id} status updated to free");
-                
-                if (ordersQueue.Count > 0)
+                if (!isProcessingOrdersRunning)
                 {
+                    Debug.Log($"Robot {Id} starting to process orders after status update.");
                     StartCoroutine(ProcessOrders());
                 }
                 else
                 {
-                    CentralController.NotifyRobotFree(this);
+                    Debug.Log($"Robot {Id} is already processing orders.");
                 }
             }
+            else
+            {
+                Debug.Log($"Robot {Id} is now free and has no orders.");
+                CentralController.NotifyRobotFree(this);
+            }
+        }
+
+        public string GetDiagnosticInfo()
+        {
+            return $"Robot {Id}: Position: {transform.position}, " +
+                $"IsMoving: {isMoving}, IsPicking: {isPicking}, " +
+                $"IsProcessingOrders: {isProcessingOrdersRunning}, " +
+                $"OrderQueueCount: {ordersQueue.Count}";
+        }
+        
+        public void ResetRobot()
+        {
+            StopAllCoroutines();
+            isMoving = false;
+            isPicking = false;
+            isProcessingOrdersRunning = false;
+            Interlocked.Exchange(ref isProcessingOrder, 0);
+            
+            while (ordersQueue.TryDequeue(out _)) { }
+            
+            Debug.Log($"Robot {Id} has been reset.");
+            StartCoroutine(ProcessOrders());
+        }
+
+        private void OnDisable()
+        {
+            StopAllCoroutines();
         }
     }
 }

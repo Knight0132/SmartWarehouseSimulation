@@ -17,6 +17,13 @@ namespace PathPlanning
 
         public static List<Tuple<ConnectionPoint, float>> AstarAlgorithm_TC(Graph graph, RoutePoint startPosition, RoutePoint endPosition, float speed)
         {
+            if (startPosition == null || endPosition == null)
+            {
+                UnityEngine.Debug.LogError("Start position or end position is null");
+                return new List<Tuple<ConnectionPoint, float>>();
+            }
+            UnityEngine.Debug.Log($"Starting A* algorithm from {startPosition.ConnectionPoint.Id} to {endPosition.ConnectionPoint.Id}");
+
             var stopwatch = new Stopwatch();
             stopwatch.Start();
             float lastSpeed = 0f;
@@ -40,19 +47,13 @@ namespace PathPlanning
 
             while (openSet.Count != 0)
             {
-                RoutePoint current = openSet[0];
-                foreach (RoutePoint node in openSet)
-                {
-                    if (f_score[node] < f_score[current])
-                    {
-                        current = node;
-                    }
-                }
+                RoutePoint current = FindLowestFScore(openSet, f_score);
 
                 if (current == endPosition)
                 {
                     stopwatch.Stop();
                     UnityEngine.Debug.Log("A* Algorithm Execution Time: " + stopwatch.ElapsedMilliseconds + "ms");
+                    LogPreviousDictionary(previous);
                     return GetPath(previous, startPosition, endPosition, speed);
                 }
                 openSet.Remove(current);
@@ -61,10 +62,10 @@ namespace PathPlanning
                 {
                     bool sequence = false;
                     RoutePoint neighborNode = graph.GetRoutePointFormConnectionPoint(neighbor);
+
                     Layer layerOfNeighbor = graph.GetLayerFromConnectionPoint(neighbor, sequence);
-                    
+
                     float currentSpeed = speed;
-                    
                     float distance = (float)current.ConnectionPoint.Point.Distance(neighbor.Point);
                     
                     currentSpeed = ModifySpeed(graph, current.ConnectionPoint, neighbor, speed, currentSpeed, lastSpeed, layerOfNeighbor);
@@ -74,15 +75,22 @@ namespace PathPlanning
 
                     if (tentative_gscore < g_score[neighborNode])
                     {
-                        previous[neighborNode] = new Tuple<RoutePoint, float>(current, currentSpeed);
-                        g_score[neighborNode] = tentative_gscore;
-                        f_score[neighborNode] = g_score[neighborNode] + h_score[neighborNode];
-                        
-                        if (!openSet.Contains(neighborNode))
+                        if (current == null)
                         {
-                            openSet.Add(neighborNode);
+                            UnityEngine.Debug.LogError($"Attempting to set null as previous for {neighborNode.ConnectionPoint.Id}");
                         }
-                        lastSpeed = currentSpeed;
+                        else
+                        {
+                            previous[neighborNode] = new Tuple<RoutePoint, float>(current, currentSpeed);
+                            g_score[neighborNode] = tentative_gscore;
+                            f_score[neighborNode] = g_score[neighborNode] + h_score[neighborNode];
+                            
+                            if (!openSet.Contains(neighborNode))
+                            {
+                                openSet.Add(neighborNode);
+                            }
+                            lastSpeed = currentSpeed;
+                        }
                     }
                 }
             }
@@ -91,41 +99,65 @@ namespace PathPlanning
             return new List<Tuple<ConnectionPoint, float>>();
         }
 
+        private static RoutePoint FindLowestFScore(List<RoutePoint> openSet, Dictionary<RoutePoint, float> f_score)
+        {
+            RoutePoint lowest = openSet[0];
+            foreach (RoutePoint node in openSet)
+            {
+                if (f_score[node] < f_score[lowest])
+                {
+                    lowest = node;
+                }
+            }
+            return lowest;
+        }
+
         private static List<Tuple<ConnectionPoint, float>> GetPath(Dictionary<RoutePoint, Tuple<RoutePoint, float>> previous, RoutePoint startPosition, RoutePoint endPosition, float speed)
         {
             List<Tuple<ConnectionPoint, float>> path = new List<Tuple<ConnectionPoint, float>>();
+            HashSet<RoutePoint> visitedPoints = new HashSet<RoutePoint>();
 
             RoutePoint current = endPosition;
             float currentSpeed = 0f;
             while (current != null && current != startPosition)
             {
+                if (visitedPoints.Contains(current))
+                {
+                    UnityEngine.Debug.LogError($"Cycle detected in path at RoutePoint: {current.ConnectionPoint.Id}");
+                    break;
+                }
+                visitedPoints.Add(current);
+
                 if (!previous.ContainsKey(current))
                 {
-                    UnityEngine.Debug.LogError($"Previous dictionary does not contain the key: {current}");
+                    UnityEngine.Debug.LogError($"Path is incomplete. Missing key in previous dictionary: {current.ConnectionPoint.Id}");
                     break;
                 }
 
                 path.Add(new Tuple<ConnectionPoint, float>(current.ConnectionPoint, currentSpeed));
-                current = previous[current].Item1;
-                currentSpeed = previous[current].Item2;
+                var prevTuple = previous[current];
+                current = prevTuple.Item1;
+                currentSpeed = prevTuple.Item2;
+
+                // if (current == null)
+                // {
+                //     UnityEngine.Debug.LogError($"Unexpected null RoutePoint in path. Last valid point: {path[path.Count - 1].Item1.Id}");
+                //     break;
+                // }
             }
 
-            path.Add(new Tuple<ConnectionPoint, float>(startPosition.ConnectionPoint, speed));
-            path.Reverse();
-            path.RemoveAt(path.Count - 1);
-            
-            List<string> pathIds = new List<string>();
-            List<float> speeds = new List<float>();
-
-            foreach (Tuple<ConnectionPoint, float> connectionPoint in path)
+            if (current == startPosition)
             {
-                pathIds.Add(connectionPoint.Item1.Id);
-                speeds.Add(connectionPoint.Item2);
+                path.Add(new Tuple<ConnectionPoint, float>(startPosition.ConnectionPoint, speed));
+                path.Reverse();
+                UnityEngine.Debug.Log($"Path found with {path.Count} points");
+                return path;
             }
-            // UnityEngine.Debug.Log("Path: " + string.Join(" -> ", pathIds.ToArray()));
-            // UnityEngine.Debug.Log("Speeds: " + string.Join(" -> ", speeds.ToArray()));
-
-            return path;
+            else
+            {
+                UnityEngine.Debug.LogError($"Failed to construct complete path. Path size: {path.Count}, Last point: {(path.Count > 0 ? path[path.Count - 1].Item1.Id : "N/A")}");
+                return new List<Tuple<ConnectionPoint, float>>();
+            }
         }
 
         private static float fScore(float gscore, float hscore)
@@ -174,6 +206,30 @@ namespace PathPlanning
             {
                 return currentSpeed = defaultSpeed;
             }
+        }
+        private static void LogPreviousDictionary(Dictionary<RoutePoint, Tuple<RoutePoint, float>> previous)
+        {
+            if (previous == null || previous.Count == 0)
+            {
+                UnityEngine.Debug.Log("Previous dictionary is empty or null");
+                return;
+            }
+
+            System.Text.StringBuilder sb = new System.Text.StringBuilder();
+            sb.AppendLine("Previous Dictionary Contents:");
+
+            foreach (var kvp in previous)
+            {
+                string currentId = kvp.Key.ConnectionPoint?.Id ?? "null";
+                string previousId = kvp.Value.Item1?.ConnectionPoint?.Id ?? "null";
+                float speed = kvp.Value.Item2;
+
+                sb.AppendLine($"Current: {currentId} <- Previous: {previousId}, Speed: {speed:F2}");
+            }
+
+            sb.AppendLine($"Total entries: {previous.Count}");
+
+            UnityEngine.Debug.Log(sb.ToString());
         }
     }
 }

@@ -31,7 +31,6 @@ namespace Map {
         {
             foreach (RoutePoint routePoint in RoutePoints)
             {
-                // Debug.Log("RoutePoint matching: " + routePoint.ConnectionPoint.Id + " " + connectionPoint.Id);
                 if (routePoint.ConnectionPoint.Id == connectionPoint.Id)
                 {
                     return routePoint;

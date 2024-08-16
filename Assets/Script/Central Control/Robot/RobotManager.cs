@@ -18,6 +18,9 @@ namespace CentralControl
         public Graph graph;
         private List<RobotController> robots = new List<RobotController>();
 
+        public int TotalRobots => robots.Count;
+        public int BusyRobots => robots.Count(r => !r.IsFree);
+
         void Update()
         {
             CheckRobotStatus();
@@ -127,6 +130,11 @@ namespace CentralControl
             return closestRobot;
         }
 
+        public List<RobotController> GetAllRobots()
+        {
+            return new List<RobotController>(robots);
+        }
+
         public void CheckRobotStatus()
         {
             foreach (var robot in robots)
@@ -139,7 +147,40 @@ namespace CentralControl
                 {
                     Debug.Log($"Robot {robot.Id} is free at position {robot.transform.position}");
                 }
+
+                if (robot.IsFree && !robot.IsProcessingOrders)
+                {
+                    Debug.LogWarning($"Robot {robot.Id} is free but not processing orders. This might indicate an issue.");
+                }
             }
+        }
+
+        public void ResetStuckRobots()
+        {
+            foreach (var robot in robots)
+            {
+                if (robot.IsFree && !robot.IsProcessingOrders && robot.GetRobotOrdersQueueCount > 0)
+                {
+                    Debug.LogWarning($"Resetting stuck robot {robot.Id}");
+                    robot.ResetRobot();
+                }
+            }
+        }
+
+        public void DiagnoseAllRobots()
+        {
+            Debug.Log($"Diagnosing all robots. Total: {TotalRobots}, Busy: {BusyRobots}");
+            foreach (var robot in robots)
+            {
+                Debug.Log($"Robot {robot.Id}: Free: {robot.IsFree}, Available: {robot.IsAvailable}, " +
+                          $"Processing Orders: {robot.IsProcessingOrders}, Queue Count: {robot.GetRobotOrdersQueueCount}, " +
+                          $"Position: {robot.transform.position}");
+            }
+        }
+
+        public List<RobotController> GetFreeRobots()
+        {
+            return robots.Where(r => r.IsFree).ToList();
         }
     }
 }

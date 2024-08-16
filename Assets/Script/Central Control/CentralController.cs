@@ -25,6 +25,7 @@ namespace CentralControl
         private List<Order> pendingOrders = new List<Order>();
         private List<Order> unassignedOrders = new List<Order>();
         private readonly object dispatchLock = new object();
+        private Coroutine systemCheckCoroutine;
 
         public static event EventHandler<RobotStatusEventArgs> OnRobotBecameFree;
 
@@ -33,6 +34,7 @@ namespace CentralControl
             await InitializeCentralControllerAsync();
             await InitializeRobotsAsync();
             StartCoroutine(StartGeneratingOrders());
+            systemCheckCoroutine = StartCoroutine(PeriodicSystemCheck());
 
             OnRobotBecameFree += HandleRobotBecameFree;
         }
@@ -40,6 +42,10 @@ namespace CentralControl
         private void OnDisable()
         {
             OnRobotBecameFree -= HandleRobotBecameFree;
+            if (systemCheckCoroutine != null)
+            {
+                StopCoroutine(systemCheckCoroutine);
+            }
         }
 
         private async Task InitializeCentralControllerAsync()
@@ -119,24 +125,29 @@ namespace CentralControl
             Debug.Log($"Dispatching {pendingOrders.Count} pending orders and {unassignedOrders.Count} unassigned orders.");
             lock (dispatchLock)
             {
-                DispatchUnassignedOrders();
-                DispatchPendingOrders();
+                int assignedCount = DispatchUnassignedOrders();
+                assignedCount += DispatchPendingOrders();
+                Debug.Log($"Successfully assigned {assignedCount} orders.");
             }
         }
 
-        private void DispatchUnassignedOrders()
+        private int DispatchUnassignedOrders()
         {
+            int assignedCount = 0;
             for (int i = unassignedOrders.Count - 1; i >= 0; i--)
             {
                 if (TryAssignOrderToRobot(unassignedOrders[i]))
                 {
                     unassignedOrders.RemoveAt(i);
+                    assignedCount++;
                 }
             }
+            return assignedCount;
         }
 
-        private void DispatchPendingOrders()
+        private int DispatchPendingOrders()
         {
+            int assignedCount = 0;
             foreach (var order in pendingOrders.ToList())
             {
                 if (order.AssignedRobotId != null)
@@ -145,13 +156,18 @@ namespace CentralControl
                     continue;
                 }
 
-                if (!TryAssignOrderToRobot(order))
+                if (TryAssignOrderToRobot(order))
+                {
+                    assignedCount++;
+                }
+                else
                 {
                     unassignedOrders.Add(order);
                     Debug.Log($"Order {order.Id} could not be assigned and added to unassigned orders");
                 }
             }
             pendingOrders.Clear();
+            return assignedCount;
         }
 
         private bool TryAssignOrderToRobot(Order order)
@@ -220,6 +236,46 @@ namespace CentralControl
                 else
                 {
                     Debug.Log($"No unassigned orders for newly freed robot {robot.Id}");
+                }
+            }
+        }
+        private IEnumerator PeriodicSystemCheck()
+        {
+            while (true)
+            {
+                yield return new WaitForSeconds(30f);
+                PerformSystemCheck();
+            }
+        }
+
+        private void PerformSystemCheck()
+        {
+            Debug.Log($"System check - Unassigned orders: {unassignedOrders.Count}, Pending orders: {pendingOrders.Count}, Total robots: {robotManager.TotalRobots}, Busy robots: {robotManager.BusyRobots}");
+
+            if (unassignedOrders.Count > 0)
+            {
+                Debug.Log("Attempting to dispatch unassigned orders.");
+                DispatchUnassignedOrders();
+            }
+
+            CheckRobotStatus();
+
+            if (pendingOrders.Count == 0 && unassignedOrders.Count == 0)
+            {
+                Debug.Log("No pending or unassigned orders. Generating new orders.");
+                GenerateRandomOrders();
+                DispatchOrders();
+            }
+        }
+
+        private void CheckRobotStatus()
+        {
+            foreach (var robot in robotManager.GetAllRobots())
+            {
+                if (robot.IsFree && !robot.IsProcessingOrders)
+                {
+                    Debug.Log($"Robot {robot.Id} is free but not processing orders. Notifying as free.");
+                    NotifyRobotFree(robot);
                 }
             }
         }
