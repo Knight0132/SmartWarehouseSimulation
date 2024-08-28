@@ -362,6 +362,7 @@
 "Assets/Script/Map/Schema/Container.cs"
 "Assets/Script/Map/Schema/Convertor.cs"
 "Assets/Script/Map/Schema/Graph.cs"
+"Assets/Script/Map/Schema/GraphConnectivityChecker.cs"
 "Assets/Script/Map/Schema/Hypergraph.cs"
 "Assets/Script/Map/Schema/IndoorSpace.cs"
 "Assets/Script/Map/Schema/Layer.cs"

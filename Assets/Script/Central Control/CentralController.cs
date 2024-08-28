@@ -60,10 +60,19 @@ namespace CentralControl
             width = mapLoader.width;
             length = mapLoader.length;
             graph = await Task.Run(() => mapLoader.GenerateRouteGraph(indoorSpaceProvider));
-            if (graph == null)
+            
+            GraphConnectivityChecker checker = new GraphConnectivityChecker(graph);
+            bool isConnected = checker.ValidateGraphConnectivity();
+            
+            if (isConnected)
             {
-                throw new System.ArgumentNullException(nameof(graph), "Graph must not be null.");
+                Debug.Log("The graph is fully connected.");
             }
+            else
+            {
+                Debug.LogWarning("The graph is not fully connected. Check the logs for details.");
+            }
+            
             Debug.Log("Central controller initialized.");
         }
 
