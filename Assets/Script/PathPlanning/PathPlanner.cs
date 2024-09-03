@@ -8,30 +8,50 @@ namespace PathPlanning
 {
     public enum SearchAlgorithm
     {
-        Astar_Basic_Distance,
-        Astar_Basic_Time,
+        BFS, 
+        Astar_Basic,
         Astar_Traffic_Completed
+    }
+
+    public enum SearchMethod
+    {
+        Euclidean_Distance,
+        Manhattan_Distance,
+        NotApplicable
     }
 
     public class PathPlanner
     {
-        public Graph graph;
+        private Graph graph;
+        private SearchMethod searchMethod;
+        private SearchAlgorithm searchAlgorithm;
         public RoutePoint startPoint;
         public RoutePoint endPoint;
         public float speed;
         
-        public static List<Tuple<ConnectionPoint, float>> FindPath(SearchAlgorithm searchAlgorithm, Graph graph, RoutePoint startPoint, RoutePoint endPoint, float speed)
+        public PathPlanner(Graph graph, SearchAlgorithm algorithm, SearchMethod method)
         {
-            switch (searchAlgorithm)
+            this.graph = graph;
+            this.searchAlgorithm = algorithm;
+            this.searchMethod = method;
+        }
+
+        public (List<ConnectionPoint> path, List<float> speeds) FindPath(
+            RoutePoint startPoint, 
+            RoutePoint endPoint, 
+            float speed)
+        {
+            Debug.Log($"PathPlanner.FindPath called with algorithm: {this.searchAlgorithm}");
+            switch (this.searchAlgorithm)
             {
-                case SearchAlgorithm.Astar_Traffic_Completed:
-                    return Astar_Traffic_Completed.AstarAlgorithm_TC(graph, startPoint, endPoint, speed);
-                case SearchAlgorithm.Astar_Basic_Distance:
-                    return Astar_Basic_Distance.AstarAlgorithm_Basic_Distance(graph, startPoint, endPoint, speed);
-                case SearchAlgorithm.Astar_Basic_Time:
-                    return Astar_Basic_Time.AstarAlgorithm_Basic_Time(graph, startPoint, endPoint, speed);
+                // case SearchAlgorithm.Astar_Traffic_Completed:
+                //     return Astar_Traffic_Completed.AstarAlgorithm_TC(graph, startPoint, endPoint, speed);
+                case SearchAlgorithm.Astar_Basic:
+                    return Astar_Basic.AstarAlgorithm(this.graph, startPoint, endPoint, speed, this.searchMethod);
+                case SearchAlgorithm.BFS:
+                    return BFS.BFSAlgorithm(this.graph, startPoint, endPoint, speed, this.searchMethod);
                 default:
-                    return null;
+                    return (null, null);
             }
         }
     }

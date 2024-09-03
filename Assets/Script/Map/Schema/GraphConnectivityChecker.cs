@@ -60,11 +60,11 @@ namespace Map {
                         {
                             visited.Add(childRoutePoint);
                             queue.Enqueue(childRoutePoint);
-                            Debug.Log($"Visiting new point: {childRoutePoint.ConnectionPoint.Id}");
+                            // Debug.Log($"Visiting new point: {childRoutePoint.ConnectionPoint.Id}");
                         }
                         else if (!reportedEdges.Contains(edgeKey))
                         {
-                            Debug.Log($"Revisiting point: {childRoutePoint.ConnectionPoint.Id} from {current.ConnectionPoint.Id}");
+                            // Debug.Log($"Revisiting point: {childRoutePoint.ConnectionPoint.Id} from {current.ConnectionPoint.Id}");
                             reportedEdges.Add(edgeKey);
                         }
                     }
@@ -95,8 +95,8 @@ namespace Map {
                 Debug.Log($"Zero in-degree point: {point.ConnectionPoint.Id}, Position: {point.ConnectionPoint.Point}");
             }
 
-            Debug.Log($"Total edges reported: {reportedEdges.Count}");
-            Debug.Log($"Average in-degree: {inDegree.Values.Average():F2}");
+            // Debug.Log($"Total edges reported: {reportedEdges.Count}");
+            // Debug.Log($"Average in-degree: {inDegree.Values.Average():F2}");
 
             return isFullyConnected;
         }

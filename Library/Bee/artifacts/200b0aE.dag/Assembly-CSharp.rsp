@@ -369,10 +369,12 @@
 "Assets/Script/Map/Schema/PickingPoint.cs"
 "Assets/Script/Map/Schema/RLineGroup.cs"
 "Assets/Script/Map/Schema/RoutePoint.cs"
-"Assets/Script/PathPlanning/AstarBasic_Distance.cs"
-"Assets/Script/PathPlanning/AstarBasic_Time.cs"
+"Assets/Script/PathPlanning/Astar_Basic.cs"
 "Assets/Script/PathPlanning/Astar_Traffic_Completed.cs"
+"Assets/Script/PathPlanning/BFS.cs"
+"Assets/Script/PathPlanning/PathChecker.cs"
 "Assets/Script/PathPlanning/PathPlanner.cs"
+"Assets/Script/PathPlanning/PriorityQueue.cs"
 -langversion:9.0
 
 /deterministic

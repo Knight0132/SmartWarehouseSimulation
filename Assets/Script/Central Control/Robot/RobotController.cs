@@ -15,7 +15,8 @@ namespace CentralControl
     {
         public MapLoader mapLoader;
         public Transform targetIndicator;
-        public SearchAlgorithm selectedAlgorithm = SearchAlgorithm.Astar_Traffic_Completed;
+        public SearchAlgorithm selectedAlgorithm = SearchAlgorithm.Astar_Basic;
+        public SearchMethod selectedSearchMethod = SearchMethod.Manhattan_Distance;
         public float defaultSpeed = 5.0f;
         public int MaxOrder = 20;
         public int Id { get; private set; }
@@ -123,10 +124,12 @@ namespace CentralControl
             isMoving = true;
             Debug.Log($"Robot {Id} executing order {order.Id} to {targetPosition}");
 
-            List<Tuple<ConnectionPoint, float>> path = PlanPath(targetPosition);
+            List<ConnectionPoint> path = new List<ConnectionPoint>();
+            List<float> speeds = new List<float>();
+            (path, speeds) = PlanPath(targetPosition);
             if (path != null && path.Count > 0)
             {
-                yield return StartCoroutine(MoveAlongPath(path, order.ExecutionTime, targetPosition));
+                yield return StartCoroutine(MoveAlongPath(path, speeds, order.ExecutionTime, targetPosition));
             }
             else
             {
@@ -170,21 +173,33 @@ namespace CentralControl
             return new Vector3((float)point.X, 0, (float)point.Y);
         }
 
-        private List<Tuple<ConnectionPoint, float>> PlanPath(Vector3 targetPosition)
+        private (List<ConnectionPoint> path, List<float> speeds) PlanPath(Vector3 targetPosition)
         {
             RoutePoint startPoint = graph.GetRoutePointFromCoordinate(transform.position, true);
-            RoutePoint endPoint = graph.GetRoutePointFromCoordinate(targetPosition, true);
+            RoutePoint endPoint = graph.GetRoutePointFromCoordinate(targetPosition, false);
 
-            Debug.Log($"Robot {Id}: Planning path from {transform.position} to {targetPosition}");
             Debug.Log($"Start RoutePoint: {startPoint?.ConnectionPoint.Id}, End RoutePoint: {endPoint?.ConnectionPoint.Id}");
 
             if (startPoint == null || endPoint == null)
             {
                 Debug.LogError($"Robot {Id}: Invalid start or end point for path planning. Start: {startPoint}, End: {endPoint}");
-                return null;
+                return (null, null);
             }
 
-            var path = PathPlanner.FindPath(selectedAlgorithm, graph, startPoint, endPoint, defaultSpeed);
+            PathChecker pathChecker = new PathChecker(graph);
+            bool pathExists = pathChecker.ValidatePath(startPoint.ConnectionPoint.Id, endPoint.ConnectionPoint.Id);
+
+            if (pathExists)
+            {
+                Debug.Log("Path exists between the given points.");
+            }
+            else
+            {
+                Debug.LogWarning("No path found between the given points.");
+            }
+            
+            PathPlanner pathPlanner = new PathPlanner(graph, selectedAlgorithm, selectedSearchMethod);
+            var (path, speeds) = pathPlanner.FindPath(startPoint, endPoint, defaultSpeed);
             
             if (path == null || path.Count == 0)
             {
@@ -195,7 +210,7 @@ namespace CentralControl
                 Debug.Log($"Robot {Id}: Path found with {path.Count} steps");
             }
 
-            return path;
+            return (path, speeds);
         }
 
         private void FailOrder(Order order)
@@ -205,9 +220,9 @@ namespace CentralControl
             UpdateRobotStatus();
         }
 
-        private IEnumerator MoveAlongPath(List<Tuple<ConnectionPoint, float>> path, float executionTime, Vector3 finalTargetPosition)
+        private IEnumerator MoveAlongPath(List<ConnectionPoint> path, List<float>speeds, float executionTime, Vector3 finalTargetPosition)
         {
-            foreach (var step in path)
+            for (int index = 0; index < path.ToArray().Length; index++)
             {
                 if (!isMoving)
                 {
@@ -215,7 +230,10 @@ namespace CentralControl
                     yield break;
                 }
 
-                yield return StartCoroutine(MoveToPosition(GetPointVector3(step.Item1.Point), step.Item2));
+                ConnectionPoint point = path[index];
+                float speed = speeds[index];
+
+                yield return StartCoroutine(MoveToPosition(GetPointVector3(point.Point), speed));
             }
 
             yield return StartCoroutine(MoveToPosition(finalTargetPosition, defaultSpeed));

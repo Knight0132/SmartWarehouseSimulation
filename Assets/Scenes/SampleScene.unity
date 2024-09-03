@@ -38,7 +38,7 @@ RenderSettings:
   m_ReflectionIntensity: 1
   m_CustomReflection: {fileID: 0}
   m_Sun: {fileID: 705507994}
-  m_IndirectSpecularColor: {r: 0.18028326, g: 0.22571333, b: 0.30692202, a: 1}
+  m_IndirectSpecularColor: {r: 0, g: 0, b: 0, a: 1}
   m_UseRadianceAmbientProbe: 0
 --- !u!157 &3
 LightmapSettings:
@@ -340,9 +340,10 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   mapLoader: {fileID: 1182216409}
   targetIndicator: {fileID: 5046057382194650421, guid: a2cba8e53abde44258ea6725fabbb9c2, type: 3}
-  selectedAlgorithm: 2
+  selectedAlgorithm: 0
+  selectedSearchMethod: 2
   defaultSpeed: 5
-  MaxOrder: 1
+  MaxOrder: 10
 --- !u!4 &799760311
 Transform:
   m_ObjectHideFlags: 0
@@ -520,7 +521,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   robotPrefab: {fileID: 5062554021843230369, guid: 071857d602b9248e0a6e9d068cf8f493, type: 3}
-  numberOfRobots: 1
+  numberOfRobots: 10
   mapLoader: {fileID: 1182216409}
   targetIndicatorPrefab: {fileID: 1397648222}
   width: 25
@@ -606,7 +607,7 @@ MonoBehaviour:
   width: 25
   length: 20
   interval: 5
-  orderCount: 3
+  orderCount: 10
   correctionFactor: 0.1
 --- !u!4 &1634256792
 Transform:
