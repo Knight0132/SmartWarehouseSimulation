@@ -196,37 +196,7 @@ namespace PathPlanning
             float randomFactor = UnityEngine.Random.Range(0.98f, 1.02f);
             newSpeed *= randomFactor;
 
-            UnityEngine.Debug.Log($"Speed adjusted: Current={current.Id} ({currentLocation}), " +
-                                $"Neighbor={neighbor.Id} ({neighborLocation}), " +
-                                $"LastSpeed={lastSpeed}, NewSpeed={newSpeed}, TargetSpeed={targetSpeed}, " +
-                                $"SpeedLimit={speedLimit}, Acceleration={acceleration}");
-
             return newSpeed;
-        }
-
-        private static void LogPreviousDictionary(Dictionary<RoutePoint, Tuple<RoutePoint, float>> previous)
-        {
-            if (previous == null || previous.Count == 0)
-            {
-                UnityEngine.Debug.Log("Previous dictionary is empty or null");
-                return;
-            }
-
-            System.Text.StringBuilder sb = new System.Text.StringBuilder();
-            sb.AppendLine("Previous Dictionary Contents:");
-
-            foreach (var kvp in previous)
-            {
-                string currentId = kvp.Key.ConnectionPoint?.Id ?? "null";
-                string previousId = kvp.Value.Item1?.ConnectionPoint?.Id ?? "null";
-                float speed = kvp.Value.Item2;
-
-                sb.AppendLine($"Current: {currentId} <- Previous: {previousId}, Speed: {speed:F2}");
-            }
-
-            sb.AppendLine($"Total entries: {previous.Count}");
-
-            UnityEngine.Debug.Log(sb.ToString());
         }
     }
 }

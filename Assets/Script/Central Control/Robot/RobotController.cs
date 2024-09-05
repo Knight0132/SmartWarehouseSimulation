@@ -188,6 +188,8 @@ namespace CentralControl
                 return (null, null);
             }
 
+            /* Test if path exists between the given points
+
             PathChecker pathChecker = new PathChecker(graph);
             bool pathExists = pathChecker.ValidatePath(startPoint.ConnectionPoint.Id, endPoint.ConnectionPoint.Id);
 
@@ -199,6 +201,7 @@ namespace CentralControl
             {
                 Debug.LogWarning("No path found between the given points.");
             }
+            */
             
             PathPlanner pathPlanner = new PathPlanner(graph, selectedAlgorithm, selectedSearchMethod, maxAcceleration, maxDeceleration);
             var (path, speeds) = pathPlanner.FindPath(startPoint, endPoint, defaultSpeed);
@@ -235,10 +238,17 @@ namespace CentralControl
                 ConnectionPoint point = path[index];
                 float speed = speeds[index];
 
-                yield return StartCoroutine(MoveToPosition(GetPointVector3(point.Point), speed));
+                if (index < path.Count - 1)
+                {
+                    yield return StartCoroutine(MoveToPosition(GetPointVector3(point.Point), speed, applySlowdown: false));
+                }
+                else
+                {
+                    yield return StartCoroutine(MoveToPosition(GetPointVector3(point.Point), speed, applySlowdown: true));
+                }
             }
 
-            yield return StartCoroutine(MoveToPosition(finalTargetPosition, defaultSpeed));
+            yield return StartCoroutine(MoveToPosition(finalTargetPosition, defaultSpeed, applySlowdown: true));
             
             Debug.Log($"Robot {Id} reached destination, executing order for {executionTime} seconds");
             
@@ -252,11 +262,27 @@ namespace CentralControl
             UpdateRobotStatus();
         }
 
-        private IEnumerator MoveToPosition(Vector3 target, float speed)
+        private IEnumerator MoveToPosition(Vector3 target, float maxSpeed, bool applySlowdown = true)
         {
+            float slowdownDistance = applySlowdown ? 2.0f : 0.1f;
+            float minSpeed = applySlowdown ? 0.5f : maxSpeed;
+
             while (Vector3.Distance(transform.position, target) > 0.1f)
             {
-                transform.position = Vector3.MoveTowards(transform.position, target, speed * Time.deltaTime);
+                float distanceToTarget = Vector3.Distance(transform.position, target);
+                float currentSpeed;
+
+                if (distanceToTarget < slowdownDistance)
+                {
+                    float t = distanceToTarget / slowdownDistance;
+                    currentSpeed = Mathf.Lerp(minSpeed, maxSpeed, t);
+                }
+                else
+                {
+                    currentSpeed = maxSpeed;
+                }
+
+                transform.position = Vector3.MoveTowards(transform.position, target, currentSpeed * Time.deltaTime);
                 yield return null;
             }
         }
