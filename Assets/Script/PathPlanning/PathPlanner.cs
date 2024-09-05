@@ -10,7 +10,7 @@ namespace PathPlanning
     {
         BFS, 
         Astar_Basic,
-        Astar_Traffic_Completed
+        Astar_Traffic
     }
 
     public enum SearchMethod
@@ -25,15 +25,19 @@ namespace PathPlanning
         private Graph graph;
         private SearchMethod searchMethod;
         private SearchAlgorithm searchAlgorithm;
+        private float maxAcceleration;
+        private float maxDeceleration;
         public RoutePoint startPoint;
         public RoutePoint endPoint;
         public float speed;
         
-        public PathPlanner(Graph graph, SearchAlgorithm algorithm, SearchMethod method)
+        public PathPlanner(Graph graph, SearchAlgorithm algorithm, SearchMethod method, float maxAcceleration, float maxDeceleration)
         {
             this.graph = graph;
             this.searchAlgorithm = algorithm;
             this.searchMethod = method;
+            this.maxAcceleration = maxAcceleration;
+            this.maxDeceleration = maxDeceleration;
         }
 
         public (List<ConnectionPoint> path, List<float> speeds) FindPath(
@@ -44,8 +48,8 @@ namespace PathPlanning
             Debug.Log($"PathPlanner.FindPath called with algorithm: {this.searchAlgorithm}");
             switch (this.searchAlgorithm)
             {
-                // case SearchAlgorithm.Astar_Traffic_Completed:
-                //     return Astar_Traffic_Completed.AstarAlgorithm_TC(graph, startPoint, endPoint, speed);
+                case SearchAlgorithm.Astar_Traffic:
+                    return Astar_Traffic.AstarAlgorithm(graph, startPoint, endPoint, speed, this.maxAcceleration, this.maxDeceleration, this.searchMethod);
                 case SearchAlgorithm.Astar_Basic:
                     return Astar_Basic.AstarAlgorithm(this.graph, startPoint, endPoint, speed, this.searchMethod);
                 case SearchAlgorithm.BFS:

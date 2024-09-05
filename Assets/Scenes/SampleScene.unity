@@ -38,7 +38,7 @@ RenderSettings:
   m_ReflectionIntensity: 1
   m_CustomReflection: {fileID: 0}
   m_Sun: {fileID: 705507994}
-  m_IndirectSpecularColor: {r: 0, g: 0, b: 0, a: 1}
+  m_IndirectSpecularColor: {r: 0.18028326, g: 0.22571333, b: 0.30692202, a: 1}
   m_UseRadianceAmbientProbe: 0
 --- !u!157 &3
 LightmapSettings:
@@ -340,8 +340,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   mapLoader: {fileID: 1182216409}
   targetIndicator: {fileID: 5046057382194650421, guid: a2cba8e53abde44258ea6725fabbb9c2, type: 3}
-  selectedAlgorithm: 0
-  selectedSearchMethod: 2
+  selectedAlgorithm: 2
+  selectedSearchMethod: 0
   defaultSpeed: 5
   MaxOrder: 10
 --- !u!4 &799760311

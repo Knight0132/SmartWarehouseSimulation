@@ -5,28 +5,44 @@ using UnityEngine;
 using Map;
 using System.Diagnostics;
 using NetTopologySuite.Geometries;
+using PointLocation = Map.Graph.PointLocation;
 
 namespace PathPlanning
 {
-    public class Astar_Traffic_Completed
+    public class Astar_Traffic
     {
-        public RoutePoint startPosition;
-        public RoutePoint endPosition;
-        public Graph graph;
-        public List<Tuple<ConnectionPoint, float>> path = new List<Tuple<ConnectionPoint, float>>();
-
-        public static List<Tuple<ConnectionPoint, float>> AstarAlgorithm_TC(Graph graph, RoutePoint startPosition, RoutePoint endPosition, float defaultSpeed)
+        public static (List<ConnectionPoint> path, List<float> speeds) AstarAlgorithm(
+            Graph graph, 
+            RoutePoint startPosition, 
+            RoutePoint endPosition, 
+            float defaultSpeed,
+            float maxAcceleration,
+            float maxDeceleration,
+            SearchMethod searchMethod)
         {
+            if (graph == null)
+            {
+                UnityEngine.Debug.LogError("Graph is null");
+                return (new List<ConnectionPoint>(), new List<float>());
+            }
+
             if (startPosition == null || endPosition == null)
             {
                 UnityEngine.Debug.LogError("Start position or end position is null");
-                return new List<Tuple<ConnectionPoint, float>>();
+                return (new List<ConnectionPoint>(), new List<float>());
             }
+
+            if (startPosition.ConnectionPoint == null || endPosition.ConnectionPoint == null)
+            {
+                UnityEngine.Debug.LogError("Start or end ConnectionPoint is null");
+                return (new List<ConnectionPoint>(), new List<float>());
+            }
+
             UnityEngine.Debug.Log($"Starting A* algorithm from {startPosition.ConnectionPoint.Id} to {endPosition.ConnectionPoint.Id}");
 
             var stopwatch = new Stopwatch();
             stopwatch.Start();
-            float lastSpeed = 0f;
+            float lastSpeed = defaultSpeed;
             Dictionary<RoutePoint, float> gScore = new Dictionary<RoutePoint, float>();
             Dictionary<RoutePoint, float> fScore = new Dictionary<RoutePoint, float>();
             Dictionary<RoutePoint, Tuple<RoutePoint, float>> previous = new Dictionary<RoutePoint, Tuple<RoutePoint, float>>();
@@ -39,11 +55,17 @@ namespace PathPlanning
             }
 
             gScore[startPosition] = 0;
-            fScore[startPosition] = HeuristicCostEstimate(startPosition, endPosition, defaultSpeed);
+            fScore[startPosition] = HeuristicCostEstimate(startPosition, endPosition, defaultSpeed, searchMethod);
             openSet.Enqueue(startPosition, fScore[startPosition]);
 
             while (openSet.TryDequeue(out RoutePoint current, out float currentPriority))
             {
+                if (current == null || current.ConnectionPoint == null)
+                {
+                    UnityEngine.Debug.LogError("Encountered null RoutePoint or ConnectionPoint");
+                    continue;
+                }
+
                 if (current == endPosition)
                 {
                     stopwatch.Stop();
@@ -57,7 +79,8 @@ namespace PathPlanning
                     if (neighbor == null) continue;
 
                     Layer layerOfNeighbor = graph.GetLayerFromConnectionPoint(neighborConnection, false);
-                    float currentSpeed = ModifySpeed(graph, current.ConnectionPoint, neighborConnection, defaultSpeed, lastSpeed, layerOfNeighbor);
+                    float currentSpeed = ModifySpeed(graph, current.ConnectionPoint, neighborConnection, defaultSpeed, lastSpeed, 
+                                                    layerOfNeighbor, Time.deltaTime, maxAcceleration, maxDeceleration);
                     float distance = (float)current.ConnectionPoint.Point.Distance(neighborConnection.Point);
                     float tentativeGScore = gScore[current] + (distance / currentSpeed);
 
@@ -65,7 +88,7 @@ namespace PathPlanning
                     {
                         previous[neighbor] = new Tuple<RoutePoint, float>(current, currentSpeed);
                         gScore[neighbor] = tentativeGScore;
-                        float f = gScore[neighbor] + HeuristicCostEstimate(neighbor, endPosition, currentSpeed);
+                        float f = gScore[neighbor] + HeuristicCostEstimate(neighbor, endPosition, currentSpeed, searchMethod);
                         fScore[neighbor] = f;
                         openSet.Enqueue(neighbor, f);
                         lastSpeed = currentSpeed;
@@ -74,85 +97,113 @@ namespace PathPlanning
             }
 
             UnityEngine.Debug.LogWarning($"No path found from {startPosition.ConnectionPoint.Id} to {endPosition.ConnectionPoint.Id}");
-            return new List<Tuple<ConnectionPoint, float>>();
+            return (new List<ConnectionPoint>(), new List<float>());
         }
 
-        private static RoutePoint FindLowestFScore(List<RoutePoint> openSet, Dictionary<RoutePoint, float> f_score)
+        private static (List<ConnectionPoint> path, List<float> speeds) ReconstructPath(
+            Dictionary<RoutePoint, Tuple<RoutePoint, float>> cameFrom, 
+            RoutePoint current, 
+            float initialSpeed)
         {
-            RoutePoint lowest = openSet[0];
-            foreach (RoutePoint node in openSet)
-            {
-                if (f_score[node] < f_score[lowest])
-                {
-                    lowest = node;
-                }
-            }
-            return lowest;
-        }
-
-        private static List<Tuple<ConnectionPoint, float>> ReconstructPath(Dictionary<RoutePoint, Tuple<RoutePoint, float>> cameFrom, RoutePoint current, float initialSpeed)
-        {
-            var path = new List<Tuple<ConnectionPoint, float>>();
+            var path = new List<ConnectionPoint>();
+            var speeds = new List<float>();
             float speed = initialSpeed;
 
-            while (cameFrom.ContainsKey(current))
+            while (current != null)
             {
-                path.Add(new Tuple<ConnectionPoint, float>(current.ConnectionPoint, speed));
-                var previousInfo = cameFrom[current];
+                if (current.ConnectionPoint == null)
+                {
+                    UnityEngine.Debug.LogError($"Encountered RoutePoint with null ConnectionPoint while reconstructing path");
+                    break;
+                }
+
+                path.Add(current.ConnectionPoint);
+                speeds.Add(speed);
+
+                if (!cameFrom.TryGetValue(current, out var previousInfo))
+                {
+                    break;
+                }
+
                 speed = previousInfo.Item2;
                 current = previousInfo.Item1;
             }
 
-            path.Add(new Tuple<ConnectionPoint, float>(current.ConnectionPoint, initialSpeed));
             path.Reverse();
-
-            return path;
+            speeds.Reverse();
+            return (path, speeds);
         }
 
-        private static float FScore(float gscore, float hscore)
-        {
-            return gscore + hscore;
-        }
-
-        private static float HeuristicCostEstimate(RoutePoint a, RoutePoint b, float speed)
+        private static float HeuristicCostEstimate(RoutePoint a, RoutePoint b, float speed, SearchMethod searchMethod)
         {
             var p1 = (Point)a.ConnectionPoint.Point;
             var p2 = (Point)b.ConnectionPoint.Point;
-            float distance = (float)Math.Sqrt(Math.Pow(p1.X - p2.X, 2) + Math.Pow(p1.Y - p2.Y, 2));
+            float distance;
+            
+            switch (searchMethod)
+            {
+                case SearchMethod.Euclidean_Distance:
+                    distance = (float)Math.Sqrt(Math.Pow(p1.X - p2.X, 2) + Math.Pow(p1.Y - p2.Y, 2));
+                    break;
+                case SearchMethod.Manhattan_Distance:
+                    distance = (float)(Math.Abs(p1.X - p2.X) + Math.Abs(p1.Y - p2.Y));
+                    break;
+                default:
+                    UnityEngine.Debug.LogWarning($"Unknown search method: {searchMethod}. Using Euclidean distance.");
+                    distance = (float)Math.Sqrt(Math.Pow(p1.X - p2.X, 2) + Math.Pow(p1.Y - p2.Y, 2));
+                    break;
+            }
+            
             return distance / speed;
         }
 
-        private static float ModifySpeed(Graph graph, ConnectionPoint current, ConnectionPoint neighbor, float defaultSpeed, float lastSpeed, Layer layerOfNeighbor)
+        private static float ModifySpeed(Graph graph, ConnectionPoint current, ConnectionPoint neighbor, 
+            float defaultSpeed, float lastSpeed, Layer layerOfNeighbor, float deltaTime, 
+            float maxAcceleration, float maxDeceleration)
         {
-            float currentSpeed = 0f;
-            if (graph.InAisle(current) && graph.InAisle(neighbor))
+            float speedLimit = layerOfNeighbor.SpeedLimit();
+            float targetSpeed = defaultSpeed;
+
+            PointLocation currentLocation = graph.GetPointLocation(current);
+            PointLocation neighborLocation = graph.GetPointLocation(neighbor);
+
+            switch (currentLocation)
             {
-                return currentSpeed = Mathf.Min(defaultSpeed, layerOfNeighbor.SpeedLimit());
+                case PointLocation.InAisle when neighborLocation == PointLocation.ApproachingIntersection:
+                    targetSpeed = speedLimit * 0.8f;
+                    break;
+                case PointLocation.ApproachingIntersection:
+                case PointLocation.InIntersection:
+                    targetSpeed = speedLimit;
+                    break;
+                case PointLocation.OutIntersection when neighborLocation == PointLocation.InAisle:
+                    targetSpeed = Mathf.Min(defaultSpeed, speedLimit);
+                    break;
+                default:
+                    targetSpeed = Mathf.Min(defaultSpeed, speedLimit);
+                    break;
             }
-            else if (graph.InAisle(current) && graph.NearIntersection(neighbor))
-            {
-                float deaccelerationFactor = layerOfNeighbor.DeaccelerationFactor();
-                return currentSpeed *= deaccelerationFactor;
-            }
-            else if (graph.NearIntersection(current) || (graph.InIntersection(current) && graph.OutIntersection(neighbor)))
-            {
-                return currentSpeed = lastSpeed;
-            }
-            else if (graph.OutIntersection(current) && graph.InAisle(neighbor))
-            {
-                return currentSpeed = Mathf.Min(defaultSpeed, layerOfNeighbor.SpeedLimit());
-            }
-            else if (graph.OutIntersection(current) && graph.NearIntersection(neighbor))
-            {
-                currentSpeed = Mathf.Min(defaultSpeed, layerOfNeighbor.SpeedLimit());
-                float deaccelerationFactor = layerOfNeighbor.DeaccelerationFactor();
-                return currentSpeed *= deaccelerationFactor;
-            }
-            else
-            {
-                return currentSpeed = defaultSpeed;
-            }
+
+            float speedDifference = targetSpeed - lastSpeed;
+            float acceleration = speedDifference / deltaTime;
+            
+            acceleration = Mathf.Clamp(acceleration, -maxDeceleration, maxAcceleration);
+            
+            float newSpeed = lastSpeed + acceleration * deltaTime;
+
+            newSpeed = Mathf.Clamp(newSpeed, speedLimit * 0.5f, speedLimit);
+
+            float randomFactor = UnityEngine.Random.Range(0.98f, 1.02f);
+            newSpeed *= randomFactor;
+
+            UnityEngine.Debug.Log($"Speed adjusted: Current={current.Id} ({currentLocation}), " +
+                                $"Neighbor={neighbor.Id} ({neighborLocation}), " +
+                                $"LastSpeed={lastSpeed}, NewSpeed={newSpeed}, TargetSpeed={targetSpeed}, " +
+                                $"SpeedLimit={speedLimit}, Acceleration={acceleration}");
+
+            return newSpeed;
         }
+
         private static void LogPreviousDictionary(Dictionary<RoutePoint, Tuple<RoutePoint, float>> previous)
         {
             if (previous == null || previous.Count == 0)

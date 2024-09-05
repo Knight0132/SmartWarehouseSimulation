@@ -113,7 +113,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   mapLoader: {fileID: 0}
   targetIndicator: {fileID: 0}
-  selectedAlgorithm: 0
-  selectedSearchMethod: 2
+  selectedAlgorithm: 2
+  selectedSearchMethod: 0
   defaultSpeed: 5
   MaxOrder: 10

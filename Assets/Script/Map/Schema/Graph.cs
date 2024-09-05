@@ -119,56 +119,39 @@ namespace Map {
             return null;
         }
 
-        public bool NearIntersection(ConnectionPoint connectionPoint, bool sequence = false)
+        public enum PointLocation
         {
-            CellSpace nextCellSpace = indoorSpace.GetCellSpaceFromConnectionPoint(connectionPoint, sequence);
-            CellSpace pastCellSpace = indoorSpace.GetCellSpaceFromConnectionPoint(connectionPoint, !sequence);
-            Layer nextLayer = indoorSpace.GetLayerFromCellSpaceId(nextCellSpace.Id);
-            Layer pastLayer = indoorSpace.GetLayerFromCellSpaceId(pastCellSpace.Id);
-            if (!(pastLayer.IsIntersection()) && nextLayer.IsIntersection())
-            {
-                return true;
-            }
-            return false;
+            InAisle, 
+            ApproachingIntersection,
+            InIntersection,
+            OutIntersection,
         }
 
-        public bool InIntersection(ConnectionPoint connectionPoint, bool sequence = false)
+        public PointLocation GetPointLocation(ConnectionPoint connectionPoint, bool sequence = false)
         {
             CellSpace nextCellSpace = indoorSpace.GetCellSpaceFromConnectionPoint(connectionPoint, sequence);
             CellSpace pastCellSpace = indoorSpace.GetCellSpaceFromConnectionPoint(connectionPoint, !sequence);
             Layer nextLayer = indoorSpace.GetLayerFromCellSpaceId(nextCellSpace.Id);
             Layer pastLayer = indoorSpace.GetLayerFromCellSpaceId(pastCellSpace.Id);
-            if (pastLayer.IsIntersection() && nextLayer.IsIntersection())
-            {
-                return true;
-            }
-            return false;
-        }
 
-        public bool OutIntersection(ConnectionPoint connectionPoint, bool sequence = false)
-        {
-            CellSpace nextCellSpace = indoorSpace.GetCellSpaceFromConnectionPoint(connectionPoint, sequence);
-            CellSpace pastCellSpace = indoorSpace.GetCellSpaceFromConnectionPoint(connectionPoint, !sequence);
-            Layer nextLayer = indoorSpace.GetLayerFromCellSpaceId(nextCellSpace.Id);
-            Layer pastLayer = indoorSpace.GetLayerFromCellSpaceId(pastCellSpace.Id);
-            if (pastLayer.IsIntersection() && !(nextLayer.IsIntersection()))
-            {
-                return true;
-            }
-            return false;
-        }
-        
-        public bool InAisle(ConnectionPoint connectionPoint, bool sequence = false)
-        {
-            CellSpace nextCellSpace = indoorSpace.GetCellSpaceFromConnectionPoint(connectionPoint, sequence);
-            CellSpace pastCellSpace = indoorSpace.GetCellSpaceFromConnectionPoint(connectionPoint, !sequence);
-            Layer nextLayer = indoorSpace.GetLayerFromCellSpaceId(nextCellSpace.Id);
-            Layer pastLayer = indoorSpace.GetLayerFromCellSpaceId(pastCellSpace.Id);
             if (pastLayer.IsAisle() && nextLayer.IsAisle())
             {
-                return true;
+                return PointLocation.InAisle;
             }
-            return false;
+            else if (!pastLayer.IsIntersection() && nextLayer.IsIntersection())
+            {
+                return PointLocation.ApproachingIntersection;
+            }
+            else if (pastLayer.IsIntersection() && nextLayer.IsIntersection())
+            {
+                return PointLocation.InIntersection;
+            }
+            else if (pastLayer.IsIntersection() && !nextLayer.IsIntersection())
+            {
+                return PointLocation.OutIntersection;
+            }
+
+            throw new System.Exception($"Unable to determine location for ConnectionPoint {connectionPoint.Id}");
         }
     }
 }

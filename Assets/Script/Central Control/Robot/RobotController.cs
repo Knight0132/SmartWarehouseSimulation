@@ -18,6 +18,8 @@ namespace CentralControl
         public SearchAlgorithm selectedAlgorithm = SearchAlgorithm.Astar_Basic;
         public SearchMethod selectedSearchMethod = SearchMethod.Manhattan_Distance;
         public float defaultSpeed = 5.0f;
+        public float maxAcceleration = 2.0f;
+        public float maxDeceleration = 3.0f;
         public int MaxOrder = 20;
         public int Id { get; private set; }
         public Graph graph { get; private set; }
@@ -198,7 +200,7 @@ namespace CentralControl
                 Debug.LogWarning("No path found between the given points.");
             }
             
-            PathPlanner pathPlanner = new PathPlanner(graph, selectedAlgorithm, selectedSearchMethod);
+            PathPlanner pathPlanner = new PathPlanner(graph, selectedAlgorithm, selectedSearchMethod, maxAcceleration, maxDeceleration);
             var (path, speeds) = pathPlanner.FindPath(startPoint, endPoint, defaultSpeed);
             
             if (path == null || path.Count == 0)
