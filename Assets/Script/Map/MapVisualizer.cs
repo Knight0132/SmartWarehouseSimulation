@@ -9,7 +9,8 @@ public class MapVisualizer : MonoBehaviour
 {
     public Material navigablePolygonMaterial;
     public Material nonNavigablePolygonMaterial;
-    public GameObject nonNavigablePrefab;
+    public Material pickingPointPolygonMaterial;
+    public GameObject shelfPrefab;
     public GameObject planePrefab;
 
     private GameObject currentStartPointObject;
@@ -20,11 +21,11 @@ public class MapVisualizer : MonoBehaviour
     {
         foreach (var cellSpace in indoorSpace.CellSpaces)
         {
-            CreateSpaceVisualization(cellSpace.Space as Polygon, (bool)cellSpace.Properties["navigable"]);
+            CreateSpaceVisualization(cellSpace.Space as Polygon, cellSpace.IsNavigable(), cellSpace.IsPickingPoint());
         }
     }
 
-    public void CreateSpaceVisualization(Polygon polygon, bool navigation)
+    public void CreateSpaceVisualization(Polygon polygon, bool isNavigable, bool isPickingPoint)
     {
         GameObject polygonObject = Instantiate(planePrefab, Vector3.zero, Quaternion.identity, transform);
         polygonObject.name = "Polygon";
@@ -32,11 +33,18 @@ public class MapVisualizer : MonoBehaviour
         polygonObject.transform.localScale = new Vector3(0.1f, 1f, 0.1f);
 
         MeshRenderer renderer = polygonObject.GetComponent<MeshRenderer>();
-        renderer.material = navigation ? navigablePolygonMaterial : nonNavigablePolygonMaterial;
-        
-        if (!navigation)
+        if (isPickingPoint)
         {
-            GameObject shelfObject = Instantiate(nonNavigablePrefab, Vector3.zero, Quaternion.identity, transform);
+            renderer.material = pickingPointPolygonMaterial;
+        }
+        else
+        {
+            renderer.material = isNavigable ? navigablePolygonMaterial : nonNavigablePolygonMaterial;
+        }
+        
+        if (!isNavigable)
+        {
+            GameObject shelfObject = Instantiate(shelfPrefab, Vector3.zero, Quaternion.identity, transform);
             shelfObject.name = "Shelf";
             shelfObject.transform.position = new Vector3((float)polygon.Centroid.X, 0.5f, (float)polygon.Centroid.Y);
             shelfObject.transform.localScale = new Vector3(1f, 1f, 1f);

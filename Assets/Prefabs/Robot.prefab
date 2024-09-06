@@ -28,7 +28,7 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 5062554021843230369}
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 2.0299494, y: 0, z: 3.9873748}
+  m_LocalPosition: {x: 2.0299494, y: 1, z: 3.9873748}
   m_LocalScale: {x: 0.7, y: 0.7, z: 0.7}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -116,4 +116,6 @@ MonoBehaviour:
   selectedAlgorithm: 2
   selectedSearchMethod: 0
   defaultSpeed: 5
+  maxAcceleration: 2
+  maxDeceleration: 3
   MaxOrder: 10
