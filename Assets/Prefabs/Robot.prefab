@@ -114,8 +114,8 @@ MonoBehaviour:
   mapLoader: {fileID: 0}
   targetIndicator: {fileID: 0}
   selectedAlgorithm: 2
-  selectedSearchMethod: 0
+  selectedSearchMethod: 1
   defaultSpeed: 5
   maxAcceleration: 2
   maxDeceleration: 3
-  MaxOrder: 10
+  MaxOrder: 20

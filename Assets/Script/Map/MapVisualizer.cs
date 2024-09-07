@@ -46,7 +46,7 @@ public class MapVisualizer : MonoBehaviour
         {
             GameObject shelfObject = Instantiate(shelfPrefab, Vector3.zero, Quaternion.identity, transform);
             shelfObject.name = "Shelf";
-            shelfObject.transform.position = new Vector3((float)polygon.Centroid.X, 0.5f, (float)polygon.Centroid.Y);
+            shelfObject.transform.position = new Vector3((float)polygon.Centroid.X, 0f, (float)polygon.Centroid.Y);
             shelfObject.transform.localScale = new Vector3(1f, 1f, 1f);
         }
     }

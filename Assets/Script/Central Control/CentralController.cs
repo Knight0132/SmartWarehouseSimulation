@@ -187,30 +187,21 @@ namespace CentralControl
                 return false;
             }
 
-            try
+            Debug.Log($"Trying to find the closest robot for order {order.Id} with destination {order.Destination}");
+            RobotController closestRobot = robotManager.GetClosestRobot(order.Destination);
+
+            if (closestRobot == null)
             {
-                Debug.Log($"Trying to find the closest robot for order {order.Id} with destination {order.Destination}");
-                RobotController closestRobot = robotManager.GetClosestRobot(order.Destination);
-
-                if (closestRobot == null)
-                {
-                    Debug.LogError($"No available or free robot for order {order.Id}.");
-                    return false;
-                }
-
-                Debug.Log($"Closest robot for order {order.Id} found: {closestRobot.Id}");
-
-                closestRobot.ReceiveOrder(order);
-                order.AssignedRobotId = closestRobot.Id;
-                Debug.Log($"Order {order.Id} assigned to robot {closestRobot.Id}");
-                return true;
-            }
-            catch (System.Exception ex)
-            {
-                Debug.LogError($"Error dispatching order {order.Id}: {ex.Message}");
-                Debug.LogError($"Stack Trace: {ex.StackTrace}");
+                Debug.LogError($"No available or free robot for order {order.Id}.");
                 return false;
             }
+
+            Debug.Log($"Closest robot for order {order.Id} found: {closestRobot.Id}");
+
+            closestRobot.ReceiveOrder(order);
+            order.AssignedRobotId = closestRobot.Id;
+            Debug.Log($"Order {order.Id} assigned to robot {closestRobot.Id}");
+            return true;
         }
 
         public static void NotifyRobotFree(RobotController robot)

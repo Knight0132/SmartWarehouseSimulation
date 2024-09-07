@@ -337,7 +337,7 @@ MonoBehaviour:
   mapLoader: {fileID: 1765155605}
   width: 25
   length: 20
-  interval: 5
+  interval: 7
   orderCount: 10
   correctionFactor: 0.1
 --- !u!4 &1051107022
@@ -559,9 +559,10 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 63ef32000ce8c4816a69ce213f33fc4e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  navigablePolygonMaterial: {fileID: 2100000, guid: b20bebfc3f7aa4f659fc35828500795b, type: 2}
+  navigablePolygonMaterial: {fileID: 2100000, guid: b5198f8af2f2fb74d81edc8ca9d255ce, type: 2}
   nonNavigablePolygonMaterial: {fileID: 2100000, guid: b67fda5e1191e4182a77d262353e88e6, type: 2}
-  nonNavigablePrefab: {fileID: 4934971901129387132, guid: 215fceb8eccbc54409e145f16c2b0f8c, type: 3}
+  pickingPointPolygonMaterial: {fileID: 2100000, guid: 1b93d41cbf697430f81058d5b31915c3, type: 2}
+  shelfPrefab: {fileID: 4934971901129387132, guid: 215fceb8eccbc54409e145f16c2b0f8c, type: 3}
   planePrefab: {fileID: 6533102830924308197, guid: 35d05da234a2549bb9887df9e0323d5e, type: 3}
 --- !u!4 &1668055373
 Transform:
