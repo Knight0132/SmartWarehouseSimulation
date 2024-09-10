@@ -172,9 +172,10 @@ namespace CentralControl
         {
             CellSpace cellSpace = indoorSpace.GetCellSpaceFromId(pickingPoint.Id);
             Point point = (Point)cellSpace.Node;
-            return new Vector3((float)point.X, 0, (float)point.Y);
+            return new Vector3((float)point.X, mapLoader.height, (float)point.Y);
         }
 
+        // path planning module
         private (List<ConnectionPoint> path, List<float> speeds) PlanPath(Vector3 targetPosition)
         {
             RoutePoint startPoint = graph.GetRoutePointFromCoordinate(transform.position, true);
@@ -225,6 +226,7 @@ namespace CentralControl
             UpdateRobotStatus();
         }
 
+        // moving module
         private IEnumerator MoveAlongPath(List<ConnectionPoint> path, List<float>speeds, float executionTime, Vector3 finalTargetPosition)
         {
             for (int index = 0; index < path.ToArray().Length; index++)
@@ -289,7 +291,7 @@ namespace CentralControl
 
         private Vector3 GetPointVector3(Geometry point)
         {
-            return new Vector3((float)((Point)point).X, 0, (float)((Point)point).Y);
+            return new Vector3((float)((Point)point).X, mapLoader.height, (float)((Point)point).Y);
         }
 
         public void SetTargetIndicator(Vector3 position)

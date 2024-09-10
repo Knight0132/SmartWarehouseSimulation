@@ -63,12 +63,12 @@ namespace CentralControl
         {
             for (int attempts = 0; attempts < 10; attempts++)
             {
-                Vector3 initialPosition = new Vector3(Random.Range(0, width), 0, Random.Range(0, length));
+                Vector3 initialPosition = new Vector3(Random.Range(0, width), mapLoader.height, Random.Range(0, length));
                 CellSpace cellSpace = indoorSpace.GetCellSpaceFromCoordinates(initialPosition);
                 if (cellSpace != null && cellSpace.IsNavigable())
                 {
                     Point point = (Point)cellSpace.Node;
-                    return new Vector3((float)point.X, 0, (float)point.Y);
+                    return new Vector3((float)point.X, mapLoader.height, (float)point.Y);
                 }
             }
             return Vector3.zero;

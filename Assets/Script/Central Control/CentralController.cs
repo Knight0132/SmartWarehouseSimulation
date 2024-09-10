@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using NetTopologySuite.Geometries;
 using UnityEngine;
 using Map;
+using PathPlanning;
 
 namespace CentralControl
 {
@@ -81,6 +82,8 @@ namespace CentralControl
             await robotManager.InitializeRobotsAsync();
         }
 
+        // order generation module
+
         IEnumerator StartGeneratingOrders()
         {
             generatingOrders = true;
@@ -128,6 +131,8 @@ namespace CentralControl
             Debug.Log($"Generated order {id} at {cellSpace.Id} with execution time {executionTime}");
             return newOrder;
         }
+
+        // order dispatch module
 
         private void DispatchOrders()
         {
@@ -239,6 +244,8 @@ namespace CentralControl
                 }
             }
         }
+
+        // system check module
         private IEnumerator PeriodicSystemCheck()
         {
             while (true)

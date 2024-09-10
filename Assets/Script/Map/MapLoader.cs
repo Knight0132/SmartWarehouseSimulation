@@ -16,6 +16,8 @@ namespace Map {
         public IndoorSpace indoorSpace;
         public MapVisualizer mapVisualizer;
 
+        public float height = 0.0f;
+
         [Range(0, 100)]
         public float width;
         [Range(0, 100)]
