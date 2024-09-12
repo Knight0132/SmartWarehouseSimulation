@@ -3,7 +3,7 @@ using System.Linq;
 using UnityEngine;
 using Map;
 
-namespace CentralControl
+namespace CentralControl.OrderAssignment
 {
     public class OrderManager: MonoBehaviour
     {

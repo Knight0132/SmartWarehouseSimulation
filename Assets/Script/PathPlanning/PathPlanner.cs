@@ -45,7 +45,6 @@ namespace PathPlanning
             RoutePoint endPoint, 
             float speed)
         {
-            Debug.Log($"PathPlanner.FindPath called with algorithm: {this.searchAlgorithm}");
             switch (this.searchAlgorithm)
             {
                 case SearchAlgorithm.Astar_Traffic:

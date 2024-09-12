@@ -6,7 +6,8 @@ using System.Threading.Tasks;
 using NetTopologySuite.Geometries;
 using UnityEngine;
 using Map;
-using PathPlanning;
+using CentralControl.OrderAssignment;
+using CentralControl.RobotControl;
 
 namespace CentralControl
 {
@@ -14,7 +15,7 @@ namespace CentralControl
     {
         public OrderManager orderManager;
         public RobotManager robotManager;
-        public IndoorSpace indoorSpaceProvider;
+        public IndoorSpace indoorSpace;
         public MapLoader mapLoader;
         public float width, length;
         public Graph graph;
@@ -22,6 +23,8 @@ namespace CentralControl
         public int orderCount = 10;
         public float correctionFactor = 0.1f;
 
+        private OrderAssignmentSelector orderAssignmentSelector;
+        private bool isInitialDispatchDone = false;
         private bool generatingOrders;
         private List<Order> pendingOrders = new List<Order>();
         private List<Order> unassignedOrders = new List<Order>();
@@ -30,14 +33,31 @@ namespace CentralControl
 
         public static event EventHandler<RobotStatusEventArgs> OnRobotBecameFree;
 
-        async void Start()
+        private void Start()
         {
-            await InitializeCentralControllerAsync();
-            await InitializeRobotsAsync();
-            StartCoroutine(StartGeneratingOrders());
-            systemCheckCoroutine = StartCoroutine(PeriodicSystemCheck());
-
+            EventManager.Instance.OnMapLoaded += OnMapLoaded;
+            EventManager.Instance.OnRobotsInitialized += OnRobotsInitialized;
+            orderAssignmentSelector = new OrderAssignmentSelector();
             OnRobotBecameFree += HandleRobotBecameFree;
+        }
+
+        private void OnMapLoaded()
+        {
+            Debug.Log("Map loaded, initializing robots...");
+            robotManager.InitializeRobots(mapLoader.indoorSpace, mapLoader.GetGraph(), mapLoader.GetMapGrid());
+        }
+
+        private void OnRobotsInitialized()
+        {
+            Debug.Log("Robots initialized, starting order generation...");
+            StartCoroutine(StartGeneratingOrders());
+            StartCoroutine(PeriodicSystemCheck());
+        }
+
+        private void OnDestroy()
+        {
+            EventManager.Instance.OnMapLoaded -= OnMapLoaded;
+            EventManager.Instance.OnRobotsInitialized -= OnRobotsInitialized;
         }
 
         private void OnDisable()
@@ -49,41 +69,7 @@ namespace CentralControl
             }
         }
 
-        private async Task InitializeCentralControllerAsync()
-        {
-            indoorSpaceProvider = await mapLoader.LoadJsonAsync();
-            if (indoorSpaceProvider == null)
-            {
-                Debug.LogError("Failed to load indoor space data.");
-                return;
-            }
-
-            width = mapLoader.width;
-            length = mapLoader.length;
-            graph = await Task.Run(() => mapLoader.GenerateRouteGraph(indoorSpaceProvider));
-            
-            GraphConnectivityChecker checker = new GraphConnectivityChecker(graph);
-            bool isConnected = checker.ValidateGraphConnectivity();
-            
-            if (isConnected)
-            {
-                Debug.Log("The graph is fully connected.");
-            }
-            else
-            {
-                Debug.LogWarning("The graph is not fully connected. Check the logs for details.");
-            }
-            
-            Debug.Log("Central controller initialized.");
-        }
-
-        private async Task InitializeRobotsAsync()
-        {
-            await robotManager.InitializeRobotsAsync();
-        }
-
         // order generation module
-
         IEnumerator StartGeneratingOrders()
         {
             generatingOrders = true;
@@ -114,12 +100,13 @@ namespace CentralControl
         private Order CreateRandomOrder()
         {
             string id = System.Guid.NewGuid().ToString();
-            int randomIndex = UnityEngine.Random.Range(0, indoorSpaceProvider.BusinessPoints.Count);
-            CellSpace cellSpace = indoorSpaceProvider.BusinessPoints[randomIndex];
+            IndoorSpace indoorSpace = mapLoader.indoorSpace;
+            int randomIndex = UnityEngine.Random.Range(0, indoorSpace.BusinessPoints.Count);
+            CellSpace cellSpace = indoorSpace.BusinessPoints[randomIndex];
             Vector3 position = new Vector3((float)cellSpace.Space.Centroid.X, 0, (float)cellSpace.Space.Centroid.Y);
 
             float executionTime = UnityEngine.Random.Range(0f, 30f) * correctionFactor;
-            PickingPoint pickingPointCellSpace = indoorSpaceProvider.GetPickingPointFromBusinessPoint(cellSpace);
+            PickingPoint pickingPointCellSpace = indoorSpace.GetPickingPointFromBusinessPoint(cellSpace);
 
             if (pickingPointCellSpace == null)
             {
@@ -128,85 +115,37 @@ namespace CentralControl
             }
 
             Order newOrder = new Order(id, position, pickingPointCellSpace, executionTime);
-            Debug.Log($"Generated order {id} at {cellSpace.Id} with execution time {executionTime}");
+            // Debug.Log($"Generated order {id} at {cellSpace.Id} with execution time {executionTime}");
             return newOrder;
         }
 
         // order dispatch module
-
         private void DispatchOrders()
         {
-            Debug.Log($"Dispatching {pendingOrders.Count} pending orders and {unassignedOrders.Count} unassigned orders.");
             lock (dispatchLock)
             {
-                int assignedCount = DispatchUnassignedOrders();
-                assignedCount += DispatchPendingOrders();
-                Debug.Log($"Successfully assigned {assignedCount} orders.");
-            }
-        }
+                List<Order> ordersToAssign = new List<Order>(pendingOrders);
+                ordersToAssign.AddRange(unassignedOrders);
+                List<RobotController> robotsToAssign = isInitialDispatchDone 
+                    ? robotManager.GetAvailableRobots() 
+                    : robotManager.GetAllRobots();
 
-        private int DispatchUnassignedOrders()
-        {
-            int assignedCount = 0;
-            for (int i = unassignedOrders.Count - 1; i >= 0; i--)
-            {
-                if (TryAssignOrderToRobot(unassignedOrders[i]))
+                if (!isInitialDispatchDone)
                 {
-                    unassignedOrders.RemoveAt(i);
-                    assignedCount++;
-                }
-            }
-            return assignedCount;
-        }
-
-        private int DispatchPendingOrders()
-        {
-            int assignedCount = 0;
-            foreach (var order in pendingOrders.ToList())
-            {
-                if (order.AssignedRobotId != null)
-                {
-                    Debug.Log($"Order {order.Id} is already assigned to robot {order.AssignedRobotId}. Skipping.");
-                    continue;
-                }
-
-                if (TryAssignOrderToRobot(order))
-                {
-                    assignedCount++;
+                    orderAssignmentSelector.InitialOrderDistribution(ordersToAssign, robotsToAssign);
+                    isInitialDispatchDone = true;
                 }
                 else
                 {
-                    unassignedOrders.Add(order);
-                    Debug.Log($"Order {order.Id} could not be assigned and added to unassigned orders");
+                    orderAssignmentSelector.AssignOrders(ordersToAssign, robotsToAssign);
                 }
+
+                int assignedCount = ordersToAssign.Count(o => o.AssignedRobotId != null);
+                unassignedOrders = ordersToAssign.Where(o => o.AssignedRobotId == null).ToList();
+                pendingOrders.Clear();
+
+                Debug.Log($"Successfully assigned {assignedCount} orders. Unassigned orders: {unassignedOrders.Count}");
             }
-            pendingOrders.Clear();
-            return assignedCount;
-        }
-
-        private bool TryAssignOrderToRobot(Order order)
-        {
-            if (order == null || string.IsNullOrEmpty(order.Id))
-            {
-                Debug.LogError("Invalid order encountered.");
-                return false;
-            }
-
-            Debug.Log($"Trying to find the closest robot for order {order.Id} with destination {order.Destination}");
-            RobotController closestRobot = robotManager.GetClosestRobot(order.Destination);
-
-            if (closestRobot == null)
-            {
-                Debug.LogError($"No available or free robot for order {order.Id}.");
-                return false;
-            }
-
-            Debug.Log($"Closest robot for order {order.Id} found: {closestRobot.Id}");
-
-            closestRobot.ReceiveOrder(order);
-            order.AssignedRobotId = closestRobot.Id;
-            Debug.Log($"Order {order.Id} assigned to robot {closestRobot.Id}");
-            return true;
         }
 
         public static void NotifyRobotFree(RobotController robot)
@@ -216,31 +155,36 @@ namespace CentralControl
 
         private void HandleRobotBecameFree(object sender, RobotStatusEventArgs e)
         {
-            Debug.Log($"Robot {e.Robot.Id} became free. Attempting to assign unassigned order.");
-            AssignOrderToFreeRobot(e.Robot);
+            Debug.Log($"Robot {e.Robot.Id} became free. Attempting to assign unassigned orders.");
+            AssignOrdersToFreeRobot(e.Robot);
         }
 
-        private void AssignOrderToFreeRobot(RobotController robot)
+        private void AssignOrdersToFreeRobot(RobotController freeRobot)
         {
             lock (dispatchLock)
             {
                 if (unassignedOrders.Count > 0)
                 {
-                    var order = unassignedOrders[0];
-                    unassignedOrders.RemoveAt(0);
-                    if (TryAssignOrderToRobot(order))
+                    List<RobotController> robots = new List<RobotController> { freeRobot };
+                    List<Order> ordersToAssign = new List<Order>(unassignedOrders);
+
+                    orderAssignmentSelector.AssignOrders(ordersToAssign, robots);
+
+                    int assignedCount = ordersToAssign.Count(o => o.AssignedRobotId == freeRobot.Id);
+                    unassignedOrders = ordersToAssign.Where(o => o.AssignedRobotId == null).ToList();
+
+                    if (assignedCount > 0)
                     {
-                        Debug.Log($"Unassigned order {order.Id} assigned to newly freed robot {robot.Id}");
+                        Debug.Log($"{assignedCount} unassigned order(s) assigned to newly freed robot {freeRobot.Id}");
                     }
                     else
                     {
-                        unassignedOrders.Add(order);
-                        Debug.LogError($"Failed to assign order {order.Id} to newly freed robot {robot.Id}");
+                        Debug.Log($"No unassigned orders could be assigned to newly freed robot {freeRobot.Id}");
                     }
                 }
                 else
                 {
-                    Debug.Log($"No unassigned orders for newly freed robot {robot.Id}");
+                    Debug.Log($"No unassigned orders for newly freed robot {freeRobot.Id}");
                 }
             }
         }
@@ -259,10 +203,10 @@ namespace CentralControl
         {
             Debug.Log($"System check - Unassigned orders: {unassignedOrders.Count}, Pending orders: {pendingOrders.Count}, Total robots: {robotManager.TotalRobots}, Busy robots: {robotManager.BusyRobots}");
 
-            if (unassignedOrders.Count > 0)
+            if (unassignedOrders.Count > 0 || pendingOrders.Count > 0)
             {
-                Debug.Log("Attempting to dispatch unassigned orders.");
-                DispatchUnassignedOrders();
+                Debug.Log("Attempting to dispatch orders.");
+                DispatchOrders();
             }
 
             CheckRobotStatus();

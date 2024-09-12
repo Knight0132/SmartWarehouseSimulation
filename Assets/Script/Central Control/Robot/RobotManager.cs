@@ -5,17 +5,17 @@ using UnityEngine;
 using NetTopologySuite.Geometries;
 using Map;
 
-namespace CentralControl
+namespace CentralControl.RobotControl
 {
     public class RobotManager : MonoBehaviour
     {
         public GameObject robotPrefab;
         public int numberOfRobots = 10;
-        public MapLoader mapLoader;
         public Transform targetIndicatorPrefab;
-        public IndoorSpace indoorSpace;
-        public float width, length;
-        public Graph graph;
+
+        private IndoorSpace indoorSpace;
+        private Graph graph;
+        private MapGrid mapGrid;
         private List<RobotController> robots = new List<RobotController>();
 
         public int TotalRobots => robots.Count;
@@ -26,27 +26,14 @@ namespace CentralControl
             CheckRobotStatus();
         }
 
-        public async Task InitializeRobotsAsync()
+        public void InitializeRobots(IndoorSpace indoorSpace, Graph graph, MapGrid mapGrid)
         {
-            indoorSpace = await mapLoader.LoadJsonAsync();
-            if (indoorSpace == null)
-            {
-                Debug.LogError("Failed to load indoor space data.");
-                return;
-            }
+            this.indoorSpace = indoorSpace;
+            this.graph = graph;
+            this.mapGrid = mapGrid;
 
-            width = mapLoader.width;
-            length = mapLoader.length;
-            graph = mapLoader.GenerateRouteGraph(indoorSpace);
-            if (graph == null)
-            {
-                Debug.LogError("Failed to generate route graph.");
-                return;
-            }
-            
             for (int i = 0; i < numberOfRobots; i++)
             {
-                await Task.Delay(1);
                 Vector3 initialPosition = GetValidInitialPosition();
                 if (initialPosition != Vector3.zero)
                 {
@@ -57,18 +44,20 @@ namespace CentralControl
                     Debug.LogWarning($"Failed to find valid position for robot {i + 1}");
                 }
             }
+
+            EventManager.Instance.TriggerRobotsInitialized();
         }
 
         private Vector3 GetValidInitialPosition()
         {
             for (int attempts = 0; attempts < 10; attempts++)
             {
-                Vector3 initialPosition = new Vector3(Random.Range(0, width), mapLoader.height, Random.Range(0, length));
+                Vector3 initialPosition = new Vector3(Random.Range(0, mapGrid.width), mapGrid.height, Random.Range(0, mapGrid.length));
                 CellSpace cellSpace = indoorSpace.GetCellSpaceFromCoordinates(initialPosition);
                 if (cellSpace != null && cellSpace.IsNavigable())
                 {
                     Point point = (Point)cellSpace.Node;
-                    return new Vector3((float)point.X, mapLoader.height, (float)point.Y);
+                    return new Vector3((float)point.X, mapGrid.height, (float)point.Y);
                 }
             }
             return Vector3.zero;
@@ -80,10 +69,9 @@ namespace CentralControl
             RobotController robot = robotObj.GetComponent<RobotController>();
             if (robot != null)
             {
-                robot.InitializeRobot(id, indoorSpace, graph);
+                robot.InitializeRobot(id, indoorSpace, graph, mapGrid);
 
                 Transform targetIndicatorInstance = Instantiate(targetIndicatorPrefab);
-                robot.mapLoader = this.mapLoader;
                 robot.targetIndicator = targetIndicatorInstance;
 
                 robots.Add(robot);
@@ -135,22 +123,40 @@ namespace CentralControl
             return new List<RobotController>(robots);
         }
 
+        public List<RobotController> GetAvailableRobots()
+        {
+            return robots.Where(r => r.IsAvailable).ToList();
+        }
+
         public void CheckRobotStatus()
         {
             foreach (var robot in robots)
             {
-                if (!robot.IsAvailable)
+                bool statusChanged = false;
+
+                if (!robot.IsAvailable && (robot.lastReportedAvailability || robot.lastReportedOrderCount != robot.GetRobotOrdersQueueCount))
                 {
                     Debug.Log($"Robot {robot.Id} is busy with {robot.GetRobotOrdersQueueCount} orders: {string.Join(", ", robot.listOrdersQueue)}");
+                    statusChanged = true;
                 }
-                if (robot.IsFree)
+                
+                if (robot.IsFree && !robot.lastReportedFreeStatus)
                 {
-                    Debug.Log($"Robot {robot.Id} is free at position {robot.transform.position}");
+                    Debug.Log($"Robot {robot.Id} is now free at position {robot.transform.position}");
+                    statusChanged = true;
                 }
 
-                if (robot.IsFree && !robot.IsProcessingOrders)
+                if (robot.IsFree && !robot.IsProcessingOrders && robot.GetRobotOrdersQueueCount > 0)
                 {
                     Debug.LogWarning($"Robot {robot.Id} is free but not processing orders. This might indicate an issue.");
+                    statusChanged = true;
+                }
+
+                if (statusChanged)
+                {
+                    robot.lastReportedAvailability = robot.IsAvailable;
+                    robot.lastReportedFreeStatus = robot.IsFree;
+                    robot.lastReportedOrderCount = robot.GetRobotOrdersQueueCount;
                 }
             }
         }
@@ -164,17 +170,6 @@ namespace CentralControl
                     Debug.LogWarning($"Resetting stuck robot {robot.Id}");
                     robot.ResetRobot();
                 }
-            }
-        }
-
-        public void DiagnoseAllRobots()
-        {
-            Debug.Log($"Diagnosing all robots. Total: {TotalRobots}, Busy: {BusyRobots}");
-            foreach (var robot in robots)
-            {
-                Debug.Log($"Robot {robot.Id}: Free: {robot.IsFree}, Available: {robot.IsAvailable}, " +
-                          $"Processing Orders: {robot.IsProcessingOrders}, Queue Count: {robot.GetRobotOrdersQueueCount}, " +
-                          $"Position: {robot.transform.position}");
             }
         }
 

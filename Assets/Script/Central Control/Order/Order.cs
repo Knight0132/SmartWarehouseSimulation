@@ -2,7 +2,7 @@ using System;
 using UnityEngine;
 using Map;
 
-namespace CentralControl 
+namespace CentralControl.OrderAssignment
 {
     public class Order
     {

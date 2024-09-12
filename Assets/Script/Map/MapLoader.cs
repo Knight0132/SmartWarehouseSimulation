@@ -1,13 +1,14 @@
 using UnityEngine;
 using UnityEngine.UI;
 using System;
-using System.Collections.Generic;
 using System.IO;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
 using NetTopologySuite.Geometries;
 using NetTopologySuite.IO;
 using PathPlanning;
+using CentralControl;
 
 namespace Map {
     public class MapLoader : MonoBehaviour
@@ -24,6 +25,7 @@ namespace Map {
         public float length;
 
         private Graph graph;
+        private MapGrid mapGrid;
         private float speed;
 
         private async void Start()
@@ -34,6 +36,7 @@ namespace Map {
             {
                 throw new ArgumentNullException(nameof(indoorSpace), "IndoorSpace must not be null.");
             }
+            
             if (indoorSpace.CellSpaces == null)
             {
                 throw new ArgumentNullException(nameof(indoorSpace.CellSpaces), "CellSpaces must not be null.");
@@ -41,8 +44,10 @@ namespace Map {
 
             mapVisualizer.VisualizeMap(indoorSpace);
             this.graph = GenerateRouteGraph(indoorSpace);
-        }
+            this.mapGrid = SetMapGrid(width, height, length);
 
+            EventManager.Instance.TriggerMapLoaded();
+        }
 
         public async Task<IndoorSpace> LoadJsonAsync()
         {
@@ -106,6 +111,22 @@ namespace Map {
             }
             Debug.Log("Route Graph Generated");
             return graph;
+        }
+
+        public MapGrid SetMapGrid(float width, float height, float length)
+        {
+            MapGrid mapGrid = new MapGrid(width, height, length);
+            return mapGrid;
+        }
+
+        public Graph GetGraph()
+        {
+            return graph;
+        }
+
+        public MapGrid GetMapGrid()
+        {
+            return mapGrid;
         }
     }
 }

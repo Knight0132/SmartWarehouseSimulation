@@ -8,69 +8,114 @@ using UnityEngine;
 using NetTopologySuite.Geometries;
 using PathPlanning;
 using Map;
+using CentralControl.OrderAssignment;
 
-namespace CentralControl
+namespace CentralControl.RobotControl
 {
+    public enum RobotState
+    {
+        Moving, 
+        Picking
+    }
+    
     public class RobotController : MonoBehaviour
     {
-        public MapLoader mapLoader;
         public Transform targetIndicator;
         public SearchAlgorithm selectedAlgorithm = SearchAlgorithm.Astar_Basic;
         public SearchMethod selectedSearchMethod = SearchMethod.Manhattan_Distance;
         public float defaultSpeed = 5.0f;
         public float maxAcceleration = 2.0f;
         public float maxDeceleration = 3.0f;
+        public float radius = 0.5f;
         public int MaxOrder = 20;
         public int Id { get; private set; }
         public Graph graph { get; private set; }
         public IndoorSpace indoorSpace { get; private set; }
+        public MapGrid mapGrid { get; private set; }
+        public bool lastReportedAvailability { get; set; }
+        public bool lastReportedFreeStatus { get; set; }
+        public int lastReportedOrderCount { get; set; } = -1;
 
-        private bool isMoving = false;
-        private bool isPicking = false;
+        private HashSet<RobotState> currentStates = new HashSet<RobotState>();
+        private HashSet<RobotState> lastReportedState = new HashSet<RobotState>();
         private ConcurrentQueue<Order> ordersQueue = new ConcurrentQueue<Order>();
         private int isProcessingOrder = 0;
         private bool isProcessingOrdersRunning = false;
         private Coroutine statusCheckCoroutine;
+
+        public bool IsMoving => currentStates.Contains(RobotState.Moving);
+        public bool IsPicking => currentStates.Contains(RobotState.Picking);
+        public bool IsFree => currentStates.Count == 0;
+        public bool IsOnTask => !IsFree;
+        public bool IsAvailable => ordersQueue.Count < MaxOrder;
+        public bool IsProcessingOrders => isProcessingOrdersRunning;
+        public int GetRobotOrdersQueueCount => ordersQueue.Count;
+
+        public List<string> listOrdersQueue => new List<string>(ordersQueue.Select(order => order.Id));
+
+        // private float criticalDistance = 1.0f;
+        // private Vector3 currentDestination;
+        // private bool isAvoidingObstacle = false;
+        // private Coroutine currentMovementCoroutine;
+        // private const float StopAndReplanDelay = 0.5f;
 
         private void Start()
         {
             statusCheckCoroutine = StartCoroutine(PeriodicStatusCheck());
         }
 
+        // private void Update()
+        // {
+        //     CheckSurroundings();
+        // }
+
         private IEnumerator PeriodicStatusCheck()
         {
             while (true)
             {
                 yield return new WaitForSeconds(10f);
-                if (!isMoving && !isPicking && ordersQueue.Count > 0 && !isProcessingOrdersRunning)
+                if (IsFree && ordersQueue.Count > 0 && !isProcessingOrdersRunning)
                 {
                     Debug.LogWarning($"Robot {Id} is idle but has orders. Restarting order processing.");
                     StartCoroutine(ProcessOrders());
                 }
-                Debug.Log($"Robot {Id} status - Moving: {isMoving}, Picking: {isPicking}, Orders: {ordersQueue.Count}, Processing: {isProcessingOrdersRunning}");
+                else
+                {
+                    if (lastReportedState != currentStates || lastReportedOrderCount != ordersQueue.Count)
+                    {
+                        Debug.Log($"Robot {Id} status - Moving: {IsMoving}, Picking: {IsPicking}, Orders: {ordersQueue.Count}, Processing: {isProcessingOrdersRunning}");
+                        lastReportedState = new HashSet<RobotState>(currentStates);
+                        lastReportedOrderCount = ordersQueue.Count;
+                    }
+                }
             }
         }
 
-
-        public void InitializeRobot(int id, IndoorSpace indoorSpace, Graph graph)
+        public void InitializeRobot(int id, IndoorSpace indoorSpace, Graph graph, MapGrid mapGrid)
         {
             Id = id;
             this.indoorSpace = indoorSpace;
             this.graph = graph;
+            this.mapGrid = mapGrid;
 
-            isMoving = false;
-            isPicking = false;
+            currentStates.Clear();
             ordersQueue = new ConcurrentQueue<Order>();
+        }
+
+        private void SetState(RobotState state, bool value)
+        {
+            if (value)
+            {
+                currentStates.Add(state);
+            }
+            else
+            {
+                currentStates.Remove(state);
+            }
         }
 
         public void ReceiveOrder(Order order)
         {
-            if (order == null)
-            {
-                Debug.LogError($"Robot {Id}: Attempted to receive a null order");
-                return;
-            }
-
             if (order.AssignedRobotId == null || order.AssignedRobotId == Id)
             {
                 if (ordersQueue.Any(o => o.Id == order.Id))
@@ -123,8 +168,7 @@ namespace CentralControl
             
             Vector3 targetPosition = GetTargetPosition(order.PickingPoint);
             SetTargetIndicator(targetPosition);
-            isMoving = true;
-            Debug.Log($"Robot {Id} executing order {order.Id} to {targetPosition}");
+            SetState(RobotState.Moving, true);
 
             List<ConnectionPoint> path = new List<ConnectionPoint>();
             List<float> speeds = new List<float>();
@@ -138,16 +182,11 @@ namespace CentralControl
                 FailOrder(order);
             }
 
-            while (isMoving && Time.time - startTime < timeout)
-            {
-                yield return null;
-            }
-
             if (Time.time - startTime >= timeout)
             {
-                Debug.LogError($"Robot {Id}: Order {order.Id} execution timed out");
                 FailOrder(order);
             }
+            UpdateRobotStatus(); 
         }
 
         private bool ValidateOrder(Order order)
@@ -172,7 +211,7 @@ namespace CentralControl
         {
             CellSpace cellSpace = indoorSpace.GetCellSpaceFromId(pickingPoint.Id);
             Point point = (Point)cellSpace.Node;
-            return new Vector3((float)point.X, mapLoader.height, (float)point.Y);
+            return new Vector3((float)point.X, mapGrid.height, (float)point.Y);
         }
 
         // path planning module
@@ -222,16 +261,20 @@ namespace CentralControl
         private void FailOrder(Order order)
         {
             Debug.LogError($"Robot {Id}: Failed to execute order {order.Id}");
-            isMoving = false;
+            SetState(RobotState.Moving, false);
+            SetState(RobotState.Picking, false);
             UpdateRobotStatus();
         }
 
         // moving module
         private IEnumerator MoveAlongPath(List<ConnectionPoint> path, List<float>speeds, float executionTime, Vector3 finalTargetPosition)
         {
+            SetState(RobotState.Moving, true);
+            SetState(RobotState.Picking, false);
+            
             for (int index = 0; index < path.ToArray().Length; index++)
             {
-                if (!isMoving)
+                if (!IsMoving)
                 {
                     Debug.LogWarning($"Robot {Id}: Movement interrupted");
                     yield break;
@@ -254,9 +297,9 @@ namespace CentralControl
             
             Debug.Log($"Robot {Id} reached destination, executing order for {executionTime} seconds");
             
-            isMoving = false;
+            SetState(RobotState.Moving, false);
+            SetState(RobotState.Picking, true);
             Debug.Log($"Robot {Id} finished moving, starting picking operation");
-            isPicking = true;
 
             yield return new WaitForSeconds(executionTime);
             Debug.Log($"Robot {Id} finished picking operation");
@@ -271,6 +314,12 @@ namespace CentralControl
 
             while (Vector3.Distance(transform.position, target) > 0.1f)
             {
+                // if (isAvoidingObstacle)
+                // {
+                //     yield return null;
+                //     continue;
+                // }
+                
                 float distanceToTarget = Vector3.Distance(transform.position, target);
                 float currentSpeed;
 
@@ -291,7 +340,7 @@ namespace CentralControl
 
         private Vector3 GetPointVector3(Geometry point)
         {
-            return new Vector3((float)((Point)point).X, mapLoader.height, (float)((Point)point).Y);
+            return new Vector3((float)((Point)point).X, mapGrid.height, (float)((Point)point).Y);
         }
 
         public void SetTargetIndicator(Vector3 position)
@@ -302,63 +351,162 @@ namespace CentralControl
             }
         }
 
-        public int GetRobotOrdersQueueCount => ordersQueue.Count;
+        // // replanning module
+        // private IEnumerator ReplanPath()
+        // {
+        //     if (ordersQueue.Count > 0)
+        //     {
+        //         if (ordersQueue.TryPeek(out Order currentOrder))
+        //         {
+        //             Vector3 targetPosition = GetTargetPosition(currentOrder.PickingPoint);
 
-        public List<string> listOrdersQueue
-        {
-            get
-            {
-                return new List<string>(ordersQueue.Select(order => order.Id));
-            }
-        }
+        //             List<ConnectionPoint> newPath = new List<ConnectionPoint>();
+        //             List<float> newSpeeds = new List<float>();
+        //             (newPath, newSpeeds) = PlanPath(targetPosition);
 
-        public bool IsMoving => isMoving;
-        public bool IsPicking => isPicking;
-        public bool IsAvailable => ordersQueue.Count < MaxOrder;
-        public bool IsOnTask => isMoving || isPicking;
-        public bool IsFree => !isMoving && !isPicking;
-        public bool IsProcessingOrders => isProcessingOrdersRunning;
+        //             if (newPath != null && newPath.Count > 0)
+        //             {
+        //                 currentMovementCoroutine = StartCoroutine(MoveAlongPath(newPath, newSpeeds, currentOrder.ExecutionTime, targetPosition));
+        //             }
+        //             else
+        //             {
+        //                 Debug.LogError($"Robot {Id}: Failed to replan path");
+        //             }
+        //         }
+        //         else
+        //         {
+        //             Debug.LogError($"Robot {Id}: Failed to peek at the current order");
+        //         }
+        //     }
+        //     else
+        //     {
+        //         Debug.Log($"Robot {Id}: No orders to replan for.");
+        //     }
+        //     yield return null;
+        // }
 
+        // // collision detection & avoidance module
+        // private void CheckSurroundings()
+        // {
+        //     Collider[] colliders = Physics.OverlapSphere(transform.position, radius);
+        //     foreach (var collider in colliders)
+        //     {
+        //         if (collider.gameObject != gameObject)
+        //         {
+        //             HandleSurroundings(collider.gameObject);
+        //         }
+        //     }
+        // }
+
+        // private void HandleSurroundings(GameObject surroundingObject)
+        // {
+        //     float distance = Vector3.Distance(transform.position, surroundingObject.transform.position);
+        //     if (distance < criticalDistance && isMoving && !isAvoidingObstacle)
+        //     {
+        //         isAvoidingObstacle = true;
+        //         StartCoroutine(StopAndAvoidObstacle(surroundingObject));
+        //     }
+        // }
+
+        // private Vector3 CalculateAvoidanceDirection(GameObject obstacle)
+        // {
+        //     Vector3 awayFromObstacle = transform.position - obstacle.transform.position;
+        //     return Vector3.ProjectOnPlane(awayFromObstacle, Vector3.up).normalized;
+        // }
+
+        // private IEnumerator StopAndAvoidObstacle(GameObject obstacle)
+        // {
+        //     StopMovement();
+        //     yield return new WaitForSeconds(StopAndReplanDelay);
+
+        //     Vector3 avoidanceDirection = CalculateAvoidanceDirection(obstacle);
+        //     Vector3 avoidanceTarget = transform.position + avoidanceDirection * radius;
+
+        //     yield return StartCoroutine(MoveToPosition(avoidanceTarget, defaultSpeed, false));
+
+        //     isAvoidingObstacle = false;
+        //     StartCoroutine(ReplanPath());
+        // }
+
+        // private IEnumerator StopAndReplan()
+        // {
+        //     StopMovement();
+        //     yield return new WaitForSeconds(StopAndReplanDelay);
+        //     StartCoroutine(ReplanPath());
+        // }
+
+        // private void StopMovement()
+        // {
+        //     if (currentMovementCoroutine != null)
+        //     {
+        //         StopCoroutine(currentMovementCoroutine);
+        //         currentMovementCoroutine = null;
+        //     }
+        //     isMoving = false;
+        //     Rigidbody rb = GetComponent<Rigidbody>();
+        //     if (rb != null)
+        //     {
+        //         rb.velocity = Vector3.zero;
+        //         rb.angularVelocity = Vector3.zero;
+        //     }
+        //     Debug.Log($"Robot {Id} stopped moving for replanning.");
+        // }
+
+        // private void OnCollisionEnter(Collision collision)
+        // {
+        //     HandleCollision(collision.gameObject);
+        // }
+
+        // private void OnTriggerEnter(Collider other)
+        // {
+        //     HandleTrigger(other.gameObject);
+        // }
+
+        // private void HandleCollision(GameObject collisionObject)
+        // {
+        //     Debug.Log($"Robot {Id} collided with {collisionObject.name}");
+        //     // replanning
+        //     StartCoroutine(StopAndReplan());
+        // }
+
+        // private void HandleTrigger(GameObject triggeringObject)
+        // {
+        //     Debug.Log($"Robot {Id} triggered by {triggeringObject.name}");
+        // }
+
+        // status check module
         private void UpdateRobotStatus()
         {
-            bool wasBusy = isMoving || isPicking;
-            isMoving = false;
-            isPicking = false;
+            bool previousFreeStatus = IsFree;
+            
+            SetState(RobotState.Moving, false);
+            SetState(RobotState.Picking, false);
 
-            Debug.Log($"Robot {Id} status updated. Was busy: {wasBusy}, Orders remaining: {ordersQueue.Count}");
+            if (previousFreeStatus != IsFree || lastReportedOrderCount != ordersQueue.Count)
+            {
+                Debug.Log($"Robot {Id} status updated. Is free: {IsFree}, Orders remaining: {ordersQueue.Count}");
+                lastReportedOrderCount = ordersQueue.Count;
+            }
 
             if (ordersQueue.Count > 0)
             {
                 if (!isProcessingOrdersRunning)
                 {
-                    Debug.Log($"Robot {Id} starting to process orders after status update.");
                     StartCoroutine(ProcessOrders());
                 }
-                else
-                {
-                    Debug.Log($"Robot {Id} is already processing orders.");
-                }
             }
-            else
+            else if (!previousFreeStatus)
             {
                 Debug.Log($"Robot {Id} is now free and has no orders.");
                 CentralController.NotifyRobotFree(this);
             }
         }
-
-        public string GetDiagnosticInfo()
-        {
-            return $"Robot {Id}: Position: {transform.position}, " +
-                $"IsMoving: {isMoving}, IsPicking: {isPicking}, " +
-                $"IsProcessingOrders: {isProcessingOrdersRunning}, " +
-                $"OrderQueueCount: {ordersQueue.Count}";
-        }
         
         public void ResetRobot()
         {
             StopAllCoroutines();
-            isMoving = false;
-            isPicking = false;
+            SetState(RobotState.Moving, false);
+            SetState(RobotState.Picking, false);
             isProcessingOrdersRunning = false;
             Interlocked.Exchange(ref isProcessingOrder, 0);
             

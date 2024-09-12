@@ -123,6 +123,50 @@ NavMeshSettings:
     debug:
       m_Flags: 0
   m_NavMeshData: {fileID: 0}
+--- !u!1 &85664997
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 85664998}
+  - component: {fileID: 85664999}
+  m_Layer: 0
+  m_Name: EventManager
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &85664998
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 85664997}
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 5.455497, y: -3.3573694, z: 25.922455}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_RootOrder: 9
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &85664999
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 85664997}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c3a810985686a4ca5a28fb96aa2eaa94, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
 --- !u!1 &196572561
 GameObject:
   m_ObjectHideFlags: 0
@@ -280,13 +324,13 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 185c32b34820c49dda3468a2c8a0b973, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  mapLoader: {fileID: 1765155605}
   targetIndicator: {fileID: 1239929927}
   selectedAlgorithm: 2
   selectedSearchMethod: 0
   defaultSpeed: 5
   maxAcceleration: 2
   maxDeceleration: 3
+  radius: 0.5
   MaxOrder: 20
 --- !u!4 &732838027
 Transform:
@@ -511,10 +555,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   robotPrefab: {fileID: 5062554021843230369, guid: 071857d602b9248e0a6e9d068cf8f493, type: 3}
   numberOfRobots: 10
-  mapLoader: {fileID: 1765155605}
   targetIndicatorPrefab: {fileID: 1239929927}
-  width: 25
-  length: 20
 --- !u!4 &1545376426
 Transform:
   m_ObjectHideFlags: 0

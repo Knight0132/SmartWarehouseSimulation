@@ -1,7 +1,8 @@
 using System;
 using UnityEngine;
+using CentralControl.OrderAssignment;
 
-namespace CentralControl
+namespace CentralControl.RobotControl
 {
     public class RobotStatusEventArgs : EventArgs
     {
