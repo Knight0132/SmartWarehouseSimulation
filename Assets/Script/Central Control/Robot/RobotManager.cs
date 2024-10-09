@@ -16,6 +16,7 @@ namespace CentralControl.RobotControl
         private IndoorSpace indoorSpace;
         private Graph graph;
         private MapGrid mapGrid;
+        private DynamicOccupancyLayer globalOccupancyLayer;
         private List<RobotController> robots = new List<RobotController>();
 
         public int TotalRobots => robots.Count;
@@ -26,11 +27,12 @@ namespace CentralControl.RobotControl
             CheckRobotStatus();
         }
 
-        public void InitializeRobots(IndoorSpace indoorSpace, Graph graph, MapGrid mapGrid)
+        public void InitializeRobots(IndoorSpace indoorSpace, Graph graph, MapGrid mapGrid, DynamicOccupancyLayer globalOccupancyLayer)
         {
             this.indoorSpace = indoorSpace;
             this.graph = graph;
             this.mapGrid = mapGrid;
+            this.globalOccupancyLayer = globalOccupancyLayer;
 
             for (int i = 0; i < numberOfRobots; i++)
             {
@@ -66,10 +68,25 @@ namespace CentralControl.RobotControl
         private void CreateRobot(int id, Vector3 position)
         {
             GameObject robotObj = Instantiate(robotPrefab, position, Quaternion.identity);
+            robotObj.tag = "Robot";
+            robotObj.layer = LayerMask.NameToLayer("RobotLayer");
             RobotController robot = robotObj.GetComponent<RobotController>();
             if (robot != null)
             {
-                robot.InitializeRobot(id, indoorSpace, graph, mapGrid);
+                if (robotObj.GetComponent<Collider>() == null)
+                {
+                    CapsuleCollider collider = robotObj.AddComponent<CapsuleCollider>();
+                    collider.radius = 0.5f;
+                }
+
+                if (robotObj.GetComponent<Rigidbody>() == null)
+                {
+                    Rigidbody rb = robotObj.AddComponent<Rigidbody>();
+                    rb.isKinematic = false;
+                    rb.useGravity = false;
+                    rb.constraints = RigidbodyConstraints.FreezeRotation;
+                }
+                robot.InitializeRobot(id, indoorSpace, graph, mapGrid, globalOccupancyLayer);
 
                 Transform targetIndicatorInstance = Instantiate(targetIndicatorPrefab);
                 robot.targetIndicator = targetIndicatorInstance;
@@ -157,6 +174,8 @@ namespace CentralControl.RobotControl
                     robot.lastReportedAvailability = robot.IsAvailable;
                     robot.lastReportedFreeStatus = robot.IsFree;
                     robot.lastReportedOrderCount = robot.GetRobotOrdersQueueCount;
+
+                    globalOccupancyLayer.SetOccupancy(indoorSpace.GetCellSpaceFromCoordinates(robot.transform.position), Time.time, !robot.IsFree);
                 }
             }
         }

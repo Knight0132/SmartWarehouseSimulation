@@ -12,9 +12,9 @@ GameObject:
   - component: {fileID: 5805053114746452075}
   - component: {fileID: 3424310934828987144}
   - component: {fileID: 2166226497064049852}
-  m_Layer: 0
+  m_Layer: 7
   m_Name: Robot
-  m_TagString: Untagged
+  m_TagString: Robot
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
@@ -99,8 +99,9 @@ MonoBehaviour:
   targetIndicator: {fileID: 0}
   selectedAlgorithm: 2
   selectedSearchMethod: 1
+  detectionRadius: 0.6
+  detectionAngle: 60
   defaultSpeed: 5
   maxAcceleration: 2
   maxDeceleration: 3
-  radius: 1
   MaxOrder: 20

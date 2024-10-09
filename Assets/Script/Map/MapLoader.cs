@@ -16,7 +16,8 @@ namespace Map {
         public TextAsset jsonFile;
         public IndoorSpace indoorSpace;
         public MapVisualizer mapVisualizer;
-
+        public MapGrid mapGrid;
+        public bool IsMapLoaded { get; private set; } = false;
         public float height = 0.0f;
 
         [Range(0, 100)]
@@ -25,7 +26,6 @@ namespace Map {
         public float length;
 
         private Graph graph;
-        private MapGrid mapGrid;
         private float speed;
 
         private async void Start()
@@ -46,6 +46,7 @@ namespace Map {
             this.graph = GenerateRouteGraph(indoorSpace);
             this.mapGrid = SetMapGrid(width, height, length);
 
+            IsMapLoaded = true;
             EventManager.Instance.TriggerMapLoaded();
         }
 
@@ -116,6 +117,7 @@ namespace Map {
         public MapGrid SetMapGrid(float width, float height, float length)
         {
             MapGrid mapGrid = new MapGrid(width, height, length);
+            mapGrid.InitializeGrid(indoorSpace);
             return mapGrid;
         }
 
@@ -127,6 +129,17 @@ namespace Map {
         public MapGrid GetMapGrid()
         {
             return mapGrid;
+        }
+
+        public Dictionary<string, Vector3Int> GetCellSpaceGridPositions()
+        {
+            if (indoorSpace == null || indoorSpace.CellSpaces == null || mapGrid == null)
+            {
+                Debug.LogError("IndoorSpace, CellSpaces, or MapGrid is null in MapLoader");
+                return new Dictionary<string, Vector3Int>();
+            }
+
+            return mapGrid.GetCellSpaceGridPositions(indoorSpace);
         }
     }
 }

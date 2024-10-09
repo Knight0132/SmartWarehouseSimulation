@@ -9,9 +9,9 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 1091335710804964257}
-  m_Layer: 0
+  m_Layer: 7
   m_Name: BoardShelf C
-  m_TagString: Untagged
+  m_TagString: Shelf
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
@@ -53,6 +53,10 @@ PrefabInstance:
     - target: {fileID: 8536941051431649757, guid: a43ed23400e84184da4519fc0c41ae9f, type: 3}
       propertyPath: m_Name
       value: MetalRack_Shelf_Board (2)
+      objectReference: {fileID: 0}
+    - target: {fileID: 8536941051431649757, guid: a43ed23400e84184da4519fc0c41ae9f, type: 3}
+      propertyPath: m_Layer
+      value: 7
       objectReference: {fileID: 0}
     - target: {fileID: 9021446774962314087, guid: a43ed23400e84184da4519fc0c41ae9f, type: 3}
       propertyPath: m_RootOrder
@@ -116,6 +120,10 @@ PrefabInstance:
       propertyPath: m_Name
       value: CarboardBox_1(Physics) (2)
       objectReference: {fileID: 0}
+    - target: {fileID: 1192641458597302, guid: cd97b2e6e488d4edf8031ffaf3e8fa67, type: 3}
+      propertyPath: m_Layer
+      value: 7
+      objectReference: {fileID: 0}
     - target: {fileID: 4333507836982010, guid: cd97b2e6e488d4edf8031ffaf3e8fa67, type: 3}
       propertyPath: m_RootOrder
       value: 9
@@ -178,6 +186,10 @@ PrefabInstance:
       propertyPath: m_Name
       value: CarboardBox_1(Physics)
       objectReference: {fileID: 0}
+    - target: {fileID: 1192641458597302, guid: cd97b2e6e488d4edf8031ffaf3e8fa67, type: 3}
+      propertyPath: m_Layer
+      value: 7
+      objectReference: {fileID: 0}
     - target: {fileID: 4333507836982010, guid: cd97b2e6e488d4edf8031ffaf3e8fa67, type: 3}
       propertyPath: m_RootOrder
       value: 7
@@ -239,6 +251,10 @@ PrefabInstance:
     - target: {fileID: 1192641458597302, guid: cd97b2e6e488d4edf8031ffaf3e8fa67, type: 3}
       propertyPath: m_Name
       value: CarboardBox_1(Physics) (1)
+      objectReference: {fileID: 0}
+    - target: {fileID: 1192641458597302, guid: cd97b2e6e488d4edf8031ffaf3e8fa67, type: 3}
+      propertyPath: m_Layer
+      value: 7
       objectReference: {fileID: 0}
     - target: {fileID: 4333507836982010, guid: cd97b2e6e488d4edf8031ffaf3e8fa67, type: 3}
       propertyPath: m_RootOrder
@@ -346,6 +362,10 @@ PrefabInstance:
       propertyPath: m_Name
       value: MetalRack_Pillar_Half (1)
       objectReference: {fileID: 0}
+    - target: {fileID: 3097523088508908820, guid: 448480d381d0acc4bb33c2b37e0c1190, type: 3}
+      propertyPath: m_Layer
+      value: 7
+      objectReference: {fileID: 0}
     m_RemovedComponents: []
   m_SourcePrefab: {fileID: 100100000, guid: 448480d381d0acc4bb33c2b37e0c1190, type: 3}
 --- !u!4 &2148357270529964632 stripped
@@ -408,6 +428,10 @@ PrefabInstance:
       propertyPath: m_Name
       value: MetalRack_Pillar_Half
       objectReference: {fileID: 0}
+    - target: {fileID: 3097523088508908820, guid: 448480d381d0acc4bb33c2b37e0c1190, type: 3}
+      propertyPath: m_Layer
+      value: 7
+      objectReference: {fileID: 0}
     m_RemovedComponents: []
   m_SourcePrefab: {fileID: 100100000, guid: 448480d381d0acc4bb33c2b37e0c1190, type: 3}
 --- !u!4 &2094903119922191842 stripped
@@ -425,6 +449,10 @@ PrefabInstance:
     - target: {fileID: 1192641458597302, guid: cd97b2e6e488d4edf8031ffaf3e8fa67, type: 3}
       propertyPath: m_Name
       value: CarboardBox_1(Physics) (4)
+      objectReference: {fileID: 0}
+    - target: {fileID: 1192641458597302, guid: cd97b2e6e488d4edf8031ffaf3e8fa67, type: 3}
+      propertyPath: m_Layer
+      value: 7
       objectReference: {fileID: 0}
     - target: {fileID: 4333507836982010, guid: cd97b2e6e488d4edf8031ffaf3e8fa67, type: 3}
       propertyPath: m_RootOrder
@@ -488,6 +516,10 @@ PrefabInstance:
       propertyPath: m_Name
       value: MetalRack_Shelf_Board
       objectReference: {fileID: 0}
+    - target: {fileID: 8536941051431649757, guid: a43ed23400e84184da4519fc0c41ae9f, type: 3}
+      propertyPath: m_Layer
+      value: 7
+      objectReference: {fileID: 0}
     - target: {fileID: 9021446774962314087, guid: a43ed23400e84184da4519fc0c41ae9f, type: 3}
       propertyPath: m_RootOrder
       value: 4
@@ -550,6 +582,10 @@ PrefabInstance:
       propertyPath: m_Name
       value: MetalRack_Shelf_Board (1)
       objectReference: {fileID: 0}
+    - target: {fileID: 8536941051431649757, guid: a43ed23400e84184da4519fc0c41ae9f, type: 3}
+      propertyPath: m_Layer
+      value: 7
+      objectReference: {fileID: 0}
     - target: {fileID: 9021446774962314087, guid: a43ed23400e84184da4519fc0c41ae9f, type: 3}
       propertyPath: m_RootOrder
       value: 5
@@ -611,6 +647,10 @@ PrefabInstance:
     - target: {fileID: 1192641458597302, guid: cd97b2e6e488d4edf8031ffaf3e8fa67, type: 3}
       propertyPath: m_Name
       value: CarboardBox_1(Physics) (3)
+      objectReference: {fileID: 0}
+    - target: {fileID: 1192641458597302, guid: cd97b2e6e488d4edf8031ffaf3e8fa67, type: 3}
+      propertyPath: m_Layer
+      value: 7
       objectReference: {fileID: 0}
     - target: {fileID: 4333507836982010, guid: cd97b2e6e488d4edf8031ffaf3e8fa67, type: 3}
       propertyPath: m_RootOrder
@@ -718,6 +758,10 @@ PrefabInstance:
       propertyPath: m_Name
       value: MetalRack_Pillar_Half (2)
       objectReference: {fileID: 0}
+    - target: {fileID: 3097523088508908820, guid: 448480d381d0acc4bb33c2b37e0c1190, type: 3}
+      propertyPath: m_Layer
+      value: 7
+      objectReference: {fileID: 0}
     m_RemovedComponents: []
   m_SourcePrefab: {fileID: 100100000, guid: 448480d381d0acc4bb33c2b37e0c1190, type: 3}
 --- !u!4 &6907260201790135360 stripped
@@ -779,6 +823,10 @@ PrefabInstance:
     - target: {fileID: 3097523088508908820, guid: 448480d381d0acc4bb33c2b37e0c1190, type: 3}
       propertyPath: m_Name
       value: MetalRack_Pillar_Half (3)
+      objectReference: {fileID: 0}
+    - target: {fileID: 3097523088508908820, guid: 448480d381d0acc4bb33c2b37e0c1190, type: 3}
+      propertyPath: m_Layer
+      value: 7
       objectReference: {fileID: 0}
     m_RemovedComponents: []
   m_SourcePrefab: {fileID: 100100000, guid: 448480d381d0acc4bb33c2b37e0c1190, type: 3}

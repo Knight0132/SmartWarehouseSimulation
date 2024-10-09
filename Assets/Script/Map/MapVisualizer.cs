@@ -28,7 +28,8 @@ public class MapVisualizer : MonoBehaviour
     public void CreateSpaceVisualization(Polygon polygon, bool isNavigable, bool isPickingPoint)
     {
         GameObject polygonObject = Instantiate(planePrefab, Vector3.zero, Quaternion.identity, transform);
-        polygonObject.name = "Polygon";
+        polygonObject.name = "Ground";
+        polygonObject.layer = LayerMask.NameToLayer("GroundLayer"); 
         polygonObject.transform.position = new Vector3((float)polygon.Centroid.X, 0, (float)polygon.Centroid.Y);
         polygonObject.transform.localScale = new Vector3(0.1f, 1f, 0.1f);
 
@@ -46,6 +47,7 @@ public class MapVisualizer : MonoBehaviour
         {
             GameObject shelfObject = Instantiate(shelfPrefab, Vector3.zero, Quaternion.identity, transform);
             shelfObject.name = "Shelf";
+            shelfObject.layer = LayerMask.NameToLayer("CollisionLayer");
             shelfObject.transform.position = new Vector3((float)polygon.Centroid.X, 0f, (float)polygon.Centroid.Y);
             shelfObject.transform.localScale = new Vector3(1f, 1f, 1f);
         }

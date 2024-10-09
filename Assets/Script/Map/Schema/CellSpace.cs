@@ -8,6 +8,12 @@ using System.Collections.Generic;
 using Newtonsoft.Json.Linq;
 
 namespace Map {
+    public enum CellSpaceStatus
+    {
+        Free, 
+        OccupiedByFacilities
+    }
+
     public class CellSpace
     {
         [JsonProperty("id")]
@@ -15,6 +21,7 @@ namespace Map {
         public Dictionary<string, object> Properties { get; private set; }
         public Geometry Space { get; private set; }
         public Geometry Node { get; private set; }
+        public CellSpaceStatus Status;
 
 
         public CellSpace(string cellId, Dictionary<string, object> properties, Geometry space, Geometry node)
@@ -23,6 +30,7 @@ namespace Map {
             this.Properties = properties;
             this.Space = space;
             this.Node = node;
+            this.Status = CellSpaceStatus.Free;
         }
 
         private bool HasFunctionOfType(string type) {
@@ -53,6 +61,16 @@ namespace Map {
                 return true;
             }
             return false;
+        }
+
+        public CellSpaceStatus GetStatus()
+        {
+            return this.Status;
+        }
+
+        public void SetStatus(CellSpaceStatus status)
+        {
+            this.Status = status;
         }
 
         public List<string> GetBoundings()

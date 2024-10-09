@@ -23,10 +23,11 @@ namespace CentralControl.RobotControl
         public Transform targetIndicator;
         public SearchAlgorithm selectedAlgorithm = SearchAlgorithm.Astar_Basic;
         public SearchMethod selectedSearchMethod = SearchMethod.Manhattan_Distance;
+        public float detectionRadius = 0.5f;
+        public float detectionAngle = 60.0f;
         public float defaultSpeed = 5.0f;
         public float maxAcceleration = 2.0f;
         public float maxDeceleration = 3.0f;
-        public float radius = 0.5f;
         public int MaxOrder = 20;
         public int Id { get; private set; }
         public Graph graph { get; private set; }
@@ -35,6 +36,11 @@ namespace CentralControl.RobotControl
         public bool lastReportedAvailability { get; set; }
         public bool lastReportedFreeStatus { get; set; }
         public int lastReportedOrderCount { get; set; } = -1;
+
+        private DynamicOccupancyLayer personalOccupancyLayer;
+        private DynamicOccupancyLayer globalOccupancyLayer;
+        private Vector3 currentPosition;
+        private const float TIME_CORRECTION_THRESHOLD = 0.5f;
 
         private HashSet<RobotState> currentStates = new HashSet<RobotState>();
         private HashSet<RobotState> lastReportedState = new HashSet<RobotState>();
@@ -50,24 +56,26 @@ namespace CentralControl.RobotControl
         public bool IsAvailable => ordersQueue.Count < MaxOrder;
         public bool IsProcessingOrders => isProcessingOrdersRunning;
         public int GetRobotOrdersQueueCount => ordersQueue.Count;
-
         public List<string> listOrdersQueue => new List<string>(ordersQueue.Select(order => order.Id));
+        
+        private bool isInitialized = false;
+        private bool isAvoidingObstacle = false;
+        private Coroutine currentMovementCoroutine;
+        private const float StopAndReplanDelay = 0.5f;
 
-        // private float criticalDistance = 1.0f;
-        // private Vector3 currentDestination;
-        // private bool isAvoidingObstacle = false;
-        // private Coroutine currentMovementCoroutine;
-        // private const float StopAndReplanDelay = 0.5f;
 
         private void Start()
         {
             statusCheckCoroutine = StartCoroutine(PeriodicStatusCheck());
         }
 
-        // private void Update()
-        // {
-        //     CheckSurroundings();
-        // }
+        private void Update()
+        {
+            if (!isInitialized) return;
+
+            UpdatePersonalLayer();
+            CheckSurroundings();
+        }
 
         private IEnumerator PeriodicStatusCheck()
         {
@@ -91,15 +99,30 @@ namespace CentralControl.RobotControl
             }
         }
 
-        public void InitializeRobot(int id, IndoorSpace indoorSpace, Graph graph, MapGrid mapGrid)
+        public void InitializeRobot(int id, IndoorSpace indoorSpace, Graph graph, MapGrid mapGrid, DynamicOccupancyLayer globalOccupancyLayer)
         {
             Id = id;
             this.indoorSpace = indoorSpace;
             this.graph = graph;
             this.mapGrid = mapGrid;
+            this.globalOccupancyLayer = globalOccupancyLayer;
 
             currentStates.Clear();
             ordersQueue = new ConcurrentQueue<Order>();
+
+            currentPosition = transform.position;
+
+            this.personalOccupancyLayer = new DynamicOccupancyLayer(
+                indoorSpace,
+                graph,
+                mapGrid,
+                globalOccupancyLayer.GetcellSpaceCentroids(), 
+                Time.time,
+                globalOccupancyLayer.GetWindowDuration(), 
+                globalOccupancyLayer.GetTimeStep()
+                );
+
+            isInitialized = true;
         }
 
         private void SetState(RobotState state, bool value)
@@ -171,11 +194,15 @@ namespace CentralControl.RobotControl
             SetState(RobotState.Moving, true);
 
             List<ConnectionPoint> path = new List<ConnectionPoint>();
+            List<float> times = new List<float>();
             List<float> speeds = new List<float>();
-            (path, speeds) = PlanPath(targetPosition);
+            bool[,,] timeSpaceMatrix = new bool[0, 0, 0];
+
+            (path, times, speeds, timeSpaceMatrix) = PlanPath(targetPosition);
             if (path != null && path.Count > 0)
             {
-                yield return StartCoroutine(MoveAlongPath(path, speeds, order.ExecutionTime, targetPosition));
+                personalOccupancyLayer.MergeTimeSpaceMatrix(timeSpaceMatrix);
+                yield return StartCoroutine(MoveAlongPath(path, times, speeds, order.ExecutionTime, targetPosition));
             }
             else
             {
@@ -215,7 +242,7 @@ namespace CentralControl.RobotControl
         }
 
         // path planning module
-        private (List<ConnectionPoint> path, List<float> speeds) PlanPath(Vector3 targetPosition)
+        private (List<ConnectionPoint> path, List<float> times, List<float> speeds, bool[,,] timeSpaceMatrix) PlanPath(Vector3 targetPosition)
         {
             RoutePoint startPoint = graph.GetRoutePointFromCoordinate(transform.position, true);
             RoutePoint endPoint = graph.GetRoutePointFromCoordinate(targetPosition, false);
@@ -225,37 +252,23 @@ namespace CentralControl.RobotControl
             if (startPoint == null || endPoint == null)
             {
                 Debug.LogError($"Robot {Id}: Invalid start or end point for path planning. Start: {startPoint}, End: {endPoint}");
-                return (null, null);
+                return (null, null, null, null);
             }
-
-            /* Test if path exists between the given points
-
-            PathChecker pathChecker = new PathChecker(graph);
-            bool pathExists = pathChecker.ValidatePath(startPoint.ConnectionPoint.Id, endPoint.ConnectionPoint.Id);
-
-            if (pathExists)
-            {
-                Debug.Log("Path exists between the given points.");
-            }
-            else
-            {
-                Debug.LogWarning("No path found between the given points.");
-            }
-            */
             
             PathPlanner pathPlanner = new PathPlanner(graph, selectedAlgorithm, selectedSearchMethod, maxAcceleration, maxDeceleration);
-            var (path, speeds) = pathPlanner.FindPath(startPoint, endPoint, defaultSpeed);
+            var (path, times, speeds, timeSpaceMatrix) = pathPlanner.FindPathWithDynamicObstacles(
+                this.personalOccupancyLayer, startPoint, endPoint, Time.time, defaultSpeed);
             
             if (path == null || path.Count == 0)
             {
-                Debug.LogError($"Robot {Id}: Failed to find path from {startPoint.ConnectionPoint.Id} to {endPoint.ConnectionPoint.Id}");
+                Debug.LogError($"Robot {Id}: Failed to find path with dynamic obstacles");
             }
             else
             {
-                Debug.Log($"Robot {Id}: Path found with {path.Count} steps");
+                Debug.Log($"Robot {Id}: Path found with {path.Count} steps considering dynamic obstacles");
             }
 
-            return (path, speeds);
+            return (path, times, speeds, timeSpaceMatrix);
         }
 
         private void FailOrder(Order order)
@@ -267,7 +280,7 @@ namespace CentralControl.RobotControl
         }
 
         // moving module
-        private IEnumerator MoveAlongPath(List<ConnectionPoint> path, List<float>speeds, float executionTime, Vector3 finalTargetPosition)
+        private IEnumerator MoveAlongPath(List<ConnectionPoint> path, List<float> times, List<float>speeds, float executionTime, Vector3 finalTargetPosition)
         {
             SetState(RobotState.Moving, true);
             SetState(RobotState.Picking, false);
@@ -280,16 +293,20 @@ namespace CentralControl.RobotControl
                     yield break;
                 }
 
-                ConnectionPoint point = path[index];
+                ConnectionPoint connectionPoint = path[index];
+                float targetTime = times[index];
                 float speed = speeds[index];
+                Vector3 targetPosition = GetPointVector3(connectionPoint.Point);
+
+                yield return StartCoroutine(CorrectTimeAndWait(connectionPoint, targetTime));
 
                 if (index < path.Count - 1)
                 {
-                    yield return StartCoroutine(MoveToPosition(GetPointVector3(point.Point), speed, applySlowdown: false));
+                    yield return StartCoroutine(MoveToPosition(targetPosition, speed, applySlowdown: false));
                 }
                 else
                 {
-                    yield return StartCoroutine(MoveToPosition(GetPointVector3(point.Point), speed, applySlowdown: true));
+                    yield return StartCoroutine(MoveToPosition(targetPosition, speed, applySlowdown: true));
                 }
             }
 
@@ -309,17 +326,12 @@ namespace CentralControl.RobotControl
 
         private IEnumerator MoveToPosition(Vector3 target, float maxSpeed, bool applySlowdown = true)
         {
+            Rigidbody rb = GetComponent<Rigidbody>();
             float slowdownDistance = applySlowdown ? 2.0f : 0.1f;
             float minSpeed = applySlowdown ? 0.5f : maxSpeed;
 
             while (Vector3.Distance(transform.position, target) > 0.1f)
             {
-                // if (isAvoidingObstacle)
-                // {
-                //     yield return null;
-                //     continue;
-                // }
-                
                 float distanceToTarget = Vector3.Distance(transform.position, target);
                 float currentSpeed;
 
@@ -333,9 +345,12 @@ namespace CentralControl.RobotControl
                     currentSpeed = maxSpeed;
                 }
 
-                transform.position = Vector3.MoveTowards(transform.position, target, currentSpeed * Time.deltaTime);
+                Vector3 direction = (target - transform.position).normalized;
+                rb.velocity = direction * currentSpeed;
+
                 yield return null;
             }
+            rb.velocity = Vector3.zero;
         }
 
         private Vector3 GetPointVector3(Geometry point)
@@ -351,128 +366,237 @@ namespace CentralControl.RobotControl
             }
         }
 
-        // // replanning module
-        // private IEnumerator ReplanPath()
-        // {
-        //     if (ordersQueue.Count > 0)
-        //     {
-        //         if (ordersQueue.TryPeek(out Order currentOrder))
-        //         {
-        //             Vector3 targetPosition = GetTargetPosition(currentOrder.PickingPoint);
+        // replanning module
+        private IEnumerator ReplanPath(int retryCount = 0, int maxRetries = 5)
+        {
+            if (ordersQueue.Count > 0)
+            {
+                if (ordersQueue.TryPeek(out Order currentOrder))
+                {
+                    Vector3 targetPosition = GetTargetPosition(currentOrder.PickingPoint);
 
-        //             List<ConnectionPoint> newPath = new List<ConnectionPoint>();
-        //             List<float> newSpeeds = new List<float>();
-        //             (newPath, newSpeeds) = PlanPath(targetPosition);
+                    RoutePoint startPoint = graph.GetRoutePointFromCoordinate(transform.position, true);
+                    RoutePoint endPoint = graph.GetRoutePointFromCoordinate(targetPosition, false);
 
-        //             if (newPath != null && newPath.Count > 0)
-        //             {
-        //                 currentMovementCoroutine = StartCoroutine(MoveAlongPath(newPath, newSpeeds, currentOrder.ExecutionTime, targetPosition));
-        //             }
-        //             else
-        //             {
-        //                 Debug.LogError($"Robot {Id}: Failed to replan path");
-        //             }
-        //         }
-        //         else
-        //         {
-        //             Debug.LogError($"Robot {Id}: Failed to peek at the current order");
-        //         }
-        //     }
-        //     else
-        //     {
-        //         Debug.Log($"Robot {Id}: No orders to replan for.");
-        //     }
-        //     yield return null;
-        // }
+                    var (newPath, newTimes, newSpeeds, newTimeSpaceMatrix) = PlanPath(targetPosition);
 
-        // // collision detection & avoidance module
-        // private void CheckSurroundings()
-        // {
-        //     Collider[] colliders = Physics.OverlapSphere(transform.position, radius);
-        //     foreach (var collider in colliders)
-        //     {
-        //         if (collider.gameObject != gameObject)
-        //         {
-        //             HandleSurroundings(collider.gameObject);
-        //         }
-        //     }
-        // }
+                    if (newPath != null && newPath.Count > 0)
+                    {
+                        currentMovementCoroutine = StartCoroutine(MoveAlongPath(newPath, newTimes, newSpeeds, currentOrder.ExecutionTime, targetPosition));
+                        isAvoidingObstacle = false;
+                    }
+                    else
+                    {
+                        if (retryCount < maxRetries)
+                        {
+                            Debug.LogWarning($"Robot {Id}: Replan failed, waiting and retrying... (Attempt {retryCount + 1}/{maxRetries})");
+                            float waitTime = Mathf.Pow(2, retryCount);
+                            yield return new WaitForSeconds(waitTime);
+                            retryCount++;
+                            yield return StartCoroutine(ReplanPath(retryCount, maxRetries));
+                        }
+                        else
+                        {
+                            FailOrder(currentOrder);
+                        }
+                        Debug.LogError($"Robot {Id}: Failed to replan path");
+                    }
+                }
+                else
+                {
+                    Debug.LogError($"Robot {Id}: Failed to peek at the current order");
+                }
+            }
+            else
+            {
+                Debug.Log($"Robot {Id}: No orders to replan for.");
+            }
+            yield return null;
+        }
 
-        // private void HandleSurroundings(GameObject surroundingObject)
-        // {
-        //     float distance = Vector3.Distance(transform.position, surroundingObject.transform.position);
-        //     if (distance < criticalDistance && isMoving && !isAvoidingObstacle)
-        //     {
-        //         isAvoidingObstacle = true;
-        //         StartCoroutine(StopAndAvoidObstacle(surroundingObject));
-        //     }
-        // }
 
-        // private Vector3 CalculateAvoidanceDirection(GameObject obstacle)
-        // {
-        //     Vector3 awayFromObstacle = transform.position - obstacle.transform.position;
-        //     return Vector3.ProjectOnPlane(awayFromObstacle, Vector3.up).normalized;
-        // }
+        // collision detection & avoidance module
+        private void CheckSurroundings()
+        {
+            LayerMask groundLayerMask = LayerMask.GetMask("GroundLayer");
+            Collider[] colliders = Physics.OverlapSphere(transform.position, detectionRadius);
+            foreach (var collider in colliders)
+            {
+                if (collider.gameObject.layer == LayerMask.NameToLayer("Ground"))
+                {
+                    continue;
+                }
 
-        // private IEnumerator StopAndAvoidObstacle(GameObject obstacle)
-        // {
-        //     StopMovement();
-        //     yield return new WaitForSeconds(StopAndReplanDelay);
+                if (collider.gameObject != gameObject && collider.CompareTag("Robot"))
+                {
+                    Vector3 otherPosition = collider.transform.position;
+                    Vector3 directionToOther = otherPosition - transform.position;
+                    float distance = directionToOther.magnitude;
 
-        //     Vector3 avoidanceDirection = CalculateAvoidanceDirection(obstacle);
-        //     Vector3 avoidanceTarget = transform.position + avoidanceDirection * radius;
+                    if (IsPotentialCollision(directionToOther))
+                    {
+                        if (!isAvoidingObstacle)
+                        {
+                            isAvoidingObstacle = true;
+                            StartCoroutine(StopAndReplan());
+                        }
+                        break;
+                    }
+                }
+            }
+        }
 
-        //     yield return StartCoroutine(MoveToPosition(avoidanceTarget, defaultSpeed, false));
+        private bool IsPotentialCollision(Vector3 directionToOther)
+        {
+            Vector3 forward = transform.forward;
+            float angle = Vector3.Angle(forward, directionToOther);
+            float distance = directionToOther.magnitude;
+            if (angle < detectionAngle && distance < detectionRadius)
+            {
+                return true;
+            }
+            return false;
+        }
 
-        //     isAvoidingObstacle = false;
-        //     StartCoroutine(ReplanPath());
-        // }
+        private IEnumerator StopAndReplan()
+        {
+            StopMovement();
+            yield return new WaitForSeconds(StopAndReplanDelay);
+            StartCoroutine(ReplanPath());
+            isAvoidingObstacle = false;
+        }
 
-        // private IEnumerator StopAndReplan()
-        // {
-        //     StopMovement();
-        //     yield return new WaitForSeconds(StopAndReplanDelay);
-        //     StartCoroutine(ReplanPath());
-        // }
+        private void StopMovement()
+        {
+            if (currentMovementCoroutine != null)
+            {
+                StopCoroutine(currentMovementCoroutine);
+                currentMovementCoroutine = null;
+            }
+            
+            Rigidbody rb = GetComponent<Rigidbody>();
+            if (rb != null)
+            {
+                rb.velocity = Vector3.zero;
+                rb.angularVelocity = Vector3.zero;
+            }
+            Debug.Log($"Robot {Id} stopped moving for replanning.");
+        }
 
-        // private void StopMovement()
-        // {
-        //     if (currentMovementCoroutine != null)
-        //     {
-        //         StopCoroutine(currentMovementCoroutine);
-        //         currentMovementCoroutine = null;
-        //     }
-        //     isMoving = false;
-        //     Rigidbody rb = GetComponent<Rigidbody>();
-        //     if (rb != null)
-        //     {
-        //         rb.velocity = Vector3.zero;
-        //         rb.angularVelocity = Vector3.zero;
-        //     }
-        //     Debug.Log($"Robot {Id} stopped moving for replanning.");
-        // }
+        private void OnCollisionEnter(Collision collision)
+        {
+            HandleCollision(collision.gameObject);
+        }
 
-        // private void OnCollisionEnter(Collision collision)
-        // {
-        //     HandleCollision(collision.gameObject);
-        // }
+        private void OnTriggerEnter(Collider other)
+        {
+            HandleTrigger(other.gameObject);
+        }
 
-        // private void OnTriggerEnter(Collider other)
-        // {
-        //     HandleTrigger(other.gameObject);
-        // }
+        private void HandleCollision(GameObject collisionObject)
+        {
+            if (collisionObject.layer == LayerMask.NameToLayer("CollisionLayer"))
+            {
+                Debug.Log($"Robot {Id} collided with another robot.");
+                HandleCollisionWithRobot(collisionObject);
+            }
+            else
+            {
+                Debug.Log($"Robot {Id} collided with {collisionObject.name}");
+                HandleCollisionWithObject(collisionObject);
+            }
+        }
 
-        // private void HandleCollision(GameObject collisionObject)
-        // {
-        //     Debug.Log($"Robot {Id} collided with {collisionObject.name}");
-        //     // replanning
-        //     StartCoroutine(StopAndReplan());
-        // }
+        private void HandleCollisionWithRobot(GameObject otherRobot)
+        {
+            if (!isAvoidingObstacle)
+            {
+                isAvoidingObstacle = true;
+                StartCoroutine(StopAndReplan());
+            }
+        }
 
-        // private void HandleTrigger(GameObject triggeringObject)
-        // {
-        //     Debug.Log($"Robot {Id} triggered by {triggeringObject.name}");
-        // }
+        private void HandleCollisionWithObject(GameObject otherObject)
+        {
+            if (!isAvoidingObstacle)
+            {
+                isAvoidingObstacle = true;
+                StartCoroutine(StopAndReplan());
+            }
+        }
+
+        private void HandleTrigger(GameObject triggeringObject)
+        {
+            Debug.Log($"Robot {Id} triggered by {triggeringObject.name}");
+        }
+
+        // dynamic occupancy layer module
+        private void UpdatePersonalLayer()
+        {
+            // Two function: Update real-time personal layer and update the latest global layer information
+            Vector3 newPosition = transform.position;
+            if (newPosition != currentPosition)
+            {
+                currentPosition = newPosition;
+                UpdatePersonalLayerFromGlobal();
+            }
+
+            CellSpace currentCellSpace = indoorSpace.GetCellSpaceFromCoordinates(currentPosition);
+            personalOccupancyLayer.SetOccupancy(currentCellSpace, Time.time, true);
+        }
+
+        private void UpdatePersonalLayerFromGlobal()
+        {
+            if (personalOccupancyLayer == null)
+            {
+                Debug.LogError($"Robot {Id}: Personal occupancy layer is null.");
+                return;
+            }
+
+            if (globalOccupancyLayer == null)
+            {
+                Debug.LogError($"Robot {Id}: Global occupancy layer is null.");
+                return;
+            }
+
+            bool[,,] globalMatrix = globalOccupancyLayer.GetTimeSpaceMatrix();
+            if (globalMatrix == null)
+            {
+                Debug.LogError($"Robot {Id}: Global time space matrix is null.");
+                return;
+            }
+
+            try
+            {
+                personalOccupancyLayer.MergeTimeSpaceMatrix(globalMatrix);
+            }
+            catch (System.Exception e)
+            {
+                Debug.LogError($"Robot {Id}: Error merging time space matrix: {e.Message}");
+            }
+        }
+        private IEnumerator CorrectTimeAndWait(ConnectionPoint connectionPoint, float targetTime)
+        {
+            while (Time.time < targetTime - TIME_CORRECTION_THRESHOLD)
+            {
+                float timeDifference = Time.time - targetTime;
+                if (Mathf.Abs(timeDifference) > TIME_CORRECTION_THRESHOLD)
+                {
+                    UpdateTimeSpaceMatrix(connectionPoint, Time.time);
+                }
+                yield return null;
+            }
+        }
+
+        private void UpdateTimeSpaceMatrix(ConnectionPoint connectionPoint, float newTime)
+        {
+            personalOccupancyLayer.UpdateTimeForIndex(connectionPoint, newTime);
+        }
+
+        public DynamicOccupancyLayer GetPersonalOccupancyLayer()
+        {
+            return personalOccupancyLayer;
+        }
 
         // status check module
         private void UpdateRobotStatus()

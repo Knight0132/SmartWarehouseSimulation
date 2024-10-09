@@ -74,6 +74,7 @@ namespace Map {
         {
             if (cellSpace.IsBusinesspoint())
             {
+                cellSpace.SetStatus(CellSpaceStatus.OccupiedByFacilities);
                 _businessPoints.Add(cellSpace);
             }
         }
@@ -118,6 +119,7 @@ namespace Map {
 
         public CellSpace GetCellSpaceFromConnectionPoint(ConnectionPoint connectionPoint, bool sequence = true)
         {
+            // true: source, false: target
             if (sequence)
             {
                 foreach (var cellBoundary in _cellBoundaries)
@@ -247,6 +249,16 @@ namespace Map {
                 hypergraph.AddHyperEdge(rLineGroup);
             }
             return hypergraph;
+        }
+
+        public Dictionary<string, Vector3> GetCellSpaceCentroids()
+        {
+            Dictionary<string, Vector3> cellSpaceCentroids = new Dictionary<string, Vector3>();
+            foreach (var cellSpace in _cellSpaces)
+            {
+                cellSpaceCentroids.Add(cellSpace.Id, new Vector3((float)cellSpace.Space.Centroid.X, 0, (float)cellSpace.Space.Centroid.Y));
+            }
+            return cellSpaceCentroids;
         }
 
         public string ToJson()

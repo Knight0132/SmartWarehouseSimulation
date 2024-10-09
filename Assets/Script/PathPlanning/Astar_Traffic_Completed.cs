@@ -11,10 +11,12 @@ namespace PathPlanning
 {
     public class Astar_Traffic
     {
-        public static (List<ConnectionPoint> path, List<float> speeds) AstarAlgorithm(
+        public static (List<ConnectionPoint> path, List<float> times, List<float> speeds, bool[,,] timeSpaceMatrix) AstarAlgorithm(
             Graph graph, 
+            DynamicOccupancyLayer personalOccupancyLayer,
             RoutePoint startPosition, 
             RoutePoint endPosition, 
+            float startTime, 
             float defaultSpeed,
             float maxAcceleration,
             float maxDeceleration,
@@ -23,19 +25,19 @@ namespace PathPlanning
             if (graph == null)
             {
                 UnityEngine.Debug.LogError("Graph is null");
-                return (new List<ConnectionPoint>(), new List<float>());
+                return (new List<ConnectionPoint>(), new List<float>(), new List<float>(), new bool[0, 0, 0]);
             }
 
             if (startPosition == null || endPosition == null)
             {
                 UnityEngine.Debug.LogError("Start position or end position is null");
-                return (new List<ConnectionPoint>(), new List<float>());
+                return (new List<ConnectionPoint>(), new List<float>(), new List<float>(), new bool[0, 0, 0]);
             }
 
             if (startPosition.ConnectionPoint == null || endPosition.ConnectionPoint == null)
             {
                 UnityEngine.Debug.LogError("Start or end ConnectionPoint is null");
-                return (new List<ConnectionPoint>(), new List<float>());
+                return (new List<ConnectionPoint>(), new List<float>(), new List<float>(), new bool[0, 0, 0]);
             }
 
             UnityEngine.Debug.Log($"Starting A* algorithm from {startPosition.ConnectionPoint.Id} to {endPosition.ConnectionPoint.Id}");
@@ -45,18 +47,21 @@ namespace PathPlanning
             float lastSpeed = defaultSpeed;
             Dictionary<RoutePoint, float> gScore = new Dictionary<RoutePoint, float>();
             Dictionary<RoutePoint, float> fScore = new Dictionary<RoutePoint, float>();
-            Dictionary<RoutePoint, Tuple<RoutePoint, float>> previous = new Dictionary<RoutePoint, Tuple<RoutePoint, float>>();
+            Dictionary<RoutePoint, Tuple<RoutePoint, float, float>> previous = new Dictionary<RoutePoint, Tuple<RoutePoint, float, float>>();
+            Dictionary<RoutePoint, float> timeAtNode = new Dictionary<RoutePoint, float>();
             var openSet = new PriorityQueue<RoutePoint, float>();
             
             foreach (var node in graph.RoutePoints)
             {
                 gScore[node] = float.PositiveInfinity;
                 fScore[node] = float.PositiveInfinity;
+                timeAtNode[node] = startTime;
             }
 
             gScore[startPosition] = 0;
-            fScore[startPosition] = HeuristicCostEstimate(startPosition, endPosition, defaultSpeed, searchMethod);
+            fScore[startPosition] = HeuristicCostEstimate(personalOccupancyLayer, startPosition, endPosition, defaultSpeed, searchMethod);
             openSet.Enqueue(startPosition, fScore[startPosition]);
+            timeAtNode[startPosition] = startTime;
 
             while (openSet.TryDequeue(out RoutePoint current, out float currentPriority))
             {
@@ -70,25 +75,35 @@ namespace PathPlanning
                 {
                     stopwatch.Stop();
                     UnityEngine.Debug.Log($"A* Algorithm Execution Time: {stopwatch.ElapsedMilliseconds}ms");
-                    return ReconstructPath(previous, current, defaultSpeed);
+                    var (path, times, speeds) = ReconstructPath(previous, current, defaultSpeed);
+
+                    bool[,,] timeSpaceMatrix = GenerateTimeSpaceMatrix(graph, personalOccupancyLayer, path, times);
+                    return (path, times, speeds, timeSpaceMatrix);
                 }
 
                 foreach (var neighborConnection in current.Children)
                 {
                     RoutePoint neighbor = graph.GetRoutePointFormConnectionPoint(neighborConnection);
                     if (neighbor == null) continue;
-
+                    
                     Layer layerOfNeighbor = graph.GetLayerFromConnectionPoint(neighborConnection, false);
                     float currentSpeed = ModifySpeed(graph, current.ConnectionPoint, neighborConnection, defaultSpeed, lastSpeed, 
                                                     layerOfNeighbor, Time.deltaTime, maxAcceleration, maxDeceleration);
                     float distance = (float)current.ConnectionPoint.Point.Distance(neighborConnection.Point);
-                    float tentativeGScore = gScore[current] + (distance / currentSpeed);
+                    float timeToReachNeighbor = distance / currentSpeed;
+                    float arrivalTimeAtNeighbor = timeAtNode[current] + timeToReachNeighbor;
+
+                    bool isOccupied = personalOccupancyLayer.IsOccupied(neighborConnection, arrivalTimeAtNeighbor);
+                    float occupancyPenalty = isOccupied ? float.PositiveInfinity : 0f;
+
+                    float tentativeGScore = gScore[current] + (distance / currentSpeed) + occupancyPenalty;
 
                     if (tentativeGScore < gScore[neighbor])
                     {
-                        previous[neighbor] = new Tuple<RoutePoint, float>(current, currentSpeed);
+                        previous[neighbor] = new Tuple<RoutePoint, float, float>(current, currentSpeed, arrivalTimeAtNeighbor);
                         gScore[neighbor] = tentativeGScore;
-                        float f = gScore[neighbor] + HeuristicCostEstimate(neighbor, endPosition, currentSpeed, searchMethod);
+                        timeAtNode[neighbor] = arrivalTimeAtNeighbor;
+                        float f = gScore[neighbor] + HeuristicCostEstimate(personalOccupancyLayer, neighbor, endPosition, currentSpeed, searchMethod);
                         fScore[neighbor] = f;
                         openSet.Enqueue(neighbor, f);
                         lastSpeed = currentSpeed;
@@ -97,15 +112,16 @@ namespace PathPlanning
             }
 
             UnityEngine.Debug.LogWarning($"No path found from {startPosition.ConnectionPoint.Id} to {endPosition.ConnectionPoint.Id}");
-            return (new List<ConnectionPoint>(), new List<float>());
+            return (new List<ConnectionPoint>(), new List<float>(), new List<float>(), new bool[0, 0, 0]);
         }
 
-        private static (List<ConnectionPoint> path, List<float> speeds) ReconstructPath(
-            Dictionary<RoutePoint, Tuple<RoutePoint, float>> cameFrom, 
+        private static (List<ConnectionPoint> path, List<float> times, List<float> speeds) ReconstructPath(
+            Dictionary<RoutePoint, Tuple<RoutePoint, float, float>> cameFrom, 
             RoutePoint current, 
             float initialSpeed)
         {
             var path = new List<ConnectionPoint>();
+            var times = new List<float>();
             var speeds = new List<float>();
             float speed = initialSpeed;
 
@@ -125,16 +141,50 @@ namespace PathPlanning
                     break;
                 }
 
+                times.Add(previousInfo.Item3);
                 speed = previousInfo.Item2;
                 current = previousInfo.Item1;
             }
 
             path.Reverse();
+            times.Reverse();
             speeds.Reverse();
-            return (path, speeds);
+
+            if (times.Count < path.Count)
+            {
+                float lastTime = times.Count > 0 ? times[times.Count - 1] : 0;
+                while (times.Count < path.Count)
+                {
+                    lastTime += 0.1f;
+                    times.Add(lastTime);
+                }
+            }
+
+            return (path, times, speeds);
         }
 
-        private static float HeuristicCostEstimate(RoutePoint a, RoutePoint b, float speed, SearchMethod searchMethod)
+        private static bool[,,] GenerateTimeSpaceMatrix(Graph graph, DynamicOccupancyLayer personalOccupancyLayer, List<ConnectionPoint> path, List<float> times)
+        {
+            int width = (int)personalOccupancyLayer.Width;
+            int length = (int)personalOccupancyLayer.Length;
+            int timeSteps = personalOccupancyLayer.TimeSteps;
+            bool[,,] matrix = new bool[width, length, timeSteps];
+
+            for (int i = 0; i < path.Count; i++)
+            {
+                ConnectionPoint connectionPoint = path[i];
+                float time = times[i];
+
+                if (time >= personalOccupancyLayer.GetStartTime() && time <= personalOccupancyLayer.GetEndTime())
+                {
+                    personalOccupancyLayer.SetOccupancy(connectionPoint, time, true);
+                }
+            }
+
+            return matrix;
+        }
+
+        private static float HeuristicCostEstimate(DynamicOccupancyLayer personalOccupancyLayer, RoutePoint a, RoutePoint b, float speed, SearchMethod searchMethod)
         {
             var p1 = (Point)a.ConnectionPoint.Point;
             var p2 = (Point)b.ConnectionPoint.Point;
@@ -154,7 +204,9 @@ namespace PathPlanning
                     break;
             }
             
-            return distance / speed;
+            float baseHeuristic = distance / speed;
+            
+            return baseHeuristic;
         }
 
         private static float ModifySpeed(Graph graph, ConnectionPoint current, ConnectionPoint neighbor, 

@@ -22,6 +22,9 @@ namespace CentralControl
         public float interval = 5f;
         public int orderCount = 10;
         public float correctionFactor = 0.1f;
+        public float dynamicUpdateInterval = 1.0f;
+        public float windowDuration = 300f;
+        public float timeStep = 0.1f;
 
         private OrderAssignmentSelector orderAssignmentSelector;
         private bool isInitialDispatchDone = false;
@@ -31,6 +34,9 @@ namespace CentralControl
         private readonly object dispatchLock = new object();
         private Coroutine systemCheckCoroutine;
 
+        private DynamicOccupancyLayer globalOccupancyLayer;
+        private float lastUpdateTime;
+
         public static event EventHandler<RobotStatusEventArgs> OnRobotBecameFree;
 
         private void Start()
@@ -39,12 +45,23 @@ namespace CentralControl
             EventManager.Instance.OnRobotsInitialized += OnRobotsInitialized;
             orderAssignmentSelector = new OrderAssignmentSelector();
             OnRobotBecameFree += HandleRobotBecameFree;
+            StartCoroutine(UpdateGlobalOccupancyLayerRoutine());
         }
 
         private void OnMapLoaded()
         {
-            Debug.Log("Map loaded, initializing robots...");
-            robotManager.InitializeRobots(mapLoader.indoorSpace, mapLoader.GetGraph(), mapLoader.GetMapGrid());
+            Debug.Log("Map loaded, initializing global occupancy layer...");
+            InitializeGlobalOccupancyLayer();
+            if (globalOccupancyLayer != null)
+            {
+                Debug.Log("Global occupancy layer initialized.");
+                Debug.Log("Map loaded, initializing robots...");
+                robotManager.InitializeRobots(mapLoader.indoorSpace, mapLoader.GetGraph(), mapLoader.GetMapGrid(), globalOccupancyLayer);
+            }
+            else
+            {
+                Debug.LogError("Failed to initialize global occupancy layer.");
+            }
         }
 
         private void OnRobotsInitialized()
@@ -187,6 +204,51 @@ namespace CentralControl
                     Debug.Log($"No unassigned orders for newly freed robot {freeRobot.Id}");
                 }
             }
+        }
+
+        // global occupancy layer module
+        private void InitializeGlobalOccupancyLayer()
+        {
+            globalOccupancyLayer = new DynamicOccupancyLayer(
+                mapLoader.indoorSpace,
+                mapLoader.GetGraph(),
+                mapLoader.GetMapGrid(),
+                mapLoader.GetCellSpaceGridPositions(),
+                Time.time,
+                windowDuration,
+                timeStep
+            );
+        }
+
+        private IEnumerator UpdateGlobalOccupancyLayerRoutine()
+        {
+            while (true)
+            {
+                yield return new WaitForSeconds(dynamicUpdateInterval);
+                UpdateGlobalOccupancyLayer();
+            }
+        }
+
+        private void UpdateGlobalOccupancyLayer()
+        {
+            foreach (var robot in robotManager.GetAllRobots())
+            {
+                MergeRobotOccupancyLayer(robot);
+            }
+
+            globalOccupancyLayer.DeleteOldData(Time.time - windowDuration);
+            globalOccupancyLayer.UpdateTime(Time.time);
+        }
+
+        private void MergeRobotOccupancyLayer(RobotController robot)
+        {
+            var robotLayer = robot.GetPersonalOccupancyLayer();
+            globalOccupancyLayer.MergeTimeSpaceMatrix(robotLayer.GetTimeSpaceMatrix());
+        }
+
+        public DynamicOccupancyLayer GetGlobalOccupancyLayer()
+        {
+            return globalOccupancyLayer;
         }
 
         // system check module

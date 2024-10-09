@@ -363,6 +363,7 @@
 "Assets/Script/Map/Schema/ConnectionPoint.cs"
 "Assets/Script/Map/Schema/Container.cs"
 "Assets/Script/Map/Schema/Convertor.cs"
+"Assets/Script/Map/Schema/DynamicOccupancyLayer.cs"
 "Assets/Script/Map/Schema/Graph.cs"
 "Assets/Script/Map/Schema/GraphConnectivityChecker.cs"
 "Assets/Script/Map/Schema/Hypergraph.cs"
