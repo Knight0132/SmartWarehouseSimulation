@@ -12,7 +12,7 @@ GameObject:
   - component: {fileID: 5805053114746452075}
   - component: {fileID: 3424310934828987144}
   - component: {fileID: 2166226497064049852}
-  m_Layer: 7
+  m_Layer: 6
   m_Name: Robot
   m_TagString: Robot
   m_Icon: {fileID: 0}
@@ -28,7 +28,7 @@ Transform:
   m_GameObject: {fileID: 5062554021843230369}
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
   m_LocalPosition: {x: 2.0299494, y: 1, z: 3.9873748}
-  m_LocalScale: {x: 0.7, y: 0.7, z: 0.7}
+  m_LocalScale: {x: 0.5, y: 0.5, z: 0.5}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 0}
@@ -98,10 +98,12 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   targetIndicator: {fileID: 0}
   selectedAlgorithm: 2
-  selectedSearchMethod: 1
-  detectionRadius: 0.6
-  detectionAngle: 60
+  selectedSearchMethod: 0
+  baseDetectionRadius: 0.5
+  collisionAngleThreshold: 60
   defaultSpeed: 5
   maxAcceleration: 2
-  maxDeceleration: 3
+  maxDeceleration: 5
   MaxOrder: 20
+  maxPathDeviationDistance: 0.5
+  pathCheckInterval: 0.2

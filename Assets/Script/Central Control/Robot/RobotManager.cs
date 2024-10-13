@@ -69,6 +69,7 @@ namespace CentralControl.RobotControl
         {
             GameObject robotObj = Instantiate(robotPrefab, position, Quaternion.identity);
             robotObj.tag = "Robot";
+            robotObj.name = $"Robot {id}";
             robotObj.layer = LayerMask.NameToLayer("RobotLayer");
             RobotController robot = robotObj.GetComponent<RobotController>();
             if (robot != null)

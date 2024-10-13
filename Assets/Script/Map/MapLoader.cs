@@ -17,6 +17,7 @@ namespace Map {
         public IndoorSpace indoorSpace;
         public MapVisualizer mapVisualizer;
         public MapGrid mapGrid;
+        public GameObject mapBoundaryPrefab;
         public bool IsMapLoaded { get; private set; } = false;
         public float height = 0.0f;
 
@@ -45,6 +46,8 @@ namespace Map {
             mapVisualizer.VisualizeMap(indoorSpace);
             this.graph = GenerateRouteGraph(indoorSpace);
             this.mapGrid = SetMapGrid(width, height, length);
+
+            CreateMapBoundary();
 
             IsMapLoaded = true;
             EventManager.Instance.TriggerMapLoaded();
@@ -112,6 +115,21 @@ namespace Map {
             }
             Debug.Log("Route Graph Generated");
             return graph;
+        }
+
+        private void CreateMapBoundary()
+        {
+            GameObject boundaryObject = Instantiate(mapBoundaryPrefab, Vector3.zero, Quaternion.identity);
+            MapBoundary mapBoundary = boundaryObject.GetComponent<MapBoundary>();
+            if (mapBoundary != null)
+            {
+                mapBoundary.mapWidth = width;
+                mapBoundary.mapLength = length;
+            }
+            else
+            {
+                Debug.LogError("MapBoundary component not found on the instantiated prefab.");
+            }
         }
 
         public MapGrid SetMapGrid(float width, float height, float length)

@@ -12,7 +12,7 @@ GameObject:
   - component: {fileID: 6522632709414072343}
   - component: {fileID: 8328061083103561372}
   - component: {fileID: 3210077626168871321}
-  m_Layer: 0
+  m_Layer: 8
   m_Name: PickingPoint
   m_TagString: Untagged
   m_Icon: {fileID: 0}

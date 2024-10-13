@@ -23,11 +23,10 @@ namespace CentralControl.RobotControl
         public Transform targetIndicator;
         public SearchAlgorithm selectedAlgorithm = SearchAlgorithm.Astar_Basic;
         public SearchMethod selectedSearchMethod = SearchMethod.Manhattan_Distance;
-        public float detectionRadius = 0.5f;
-        public float detectionAngle = 60.0f;
+        public float baseDetectionRadius = 0.7f;
         public float defaultSpeed = 5.0f;
         public float maxAcceleration = 2.0f;
-        public float maxDeceleration = 3.0f;
+        public float maxDeceleration = 5.0f;
         public int MaxOrder = 20;
         public int Id { get; private set; }
         public Graph graph { get; private set; }
@@ -59,14 +58,25 @@ namespace CentralControl.RobotControl
         public List<string> listOrdersQueue => new List<string>(ordersQueue.Select(order => order.Id));
         
         private bool isInitialized = false;
+        private float detectionRadius;
+        private float collisionAngleThreshold = 90f;
+        private float highRiskAngleThreshold = 30f;
         private bool isAvoidingObstacle = false;
         private Coroutine currentMovementCoroutine;
-        private const float StopAndReplanDelay = 0.5f;
+        private const float StopAndReplanDelay = 1.0f;
+
+        public float maxPathDeviationDistance = 0.5f;
+        public float pathCheckInterval = 0.5f;
+        private List<Vector3> currentPath;
+        private int currentPathIndex;
+        private bool isPathValid = false;
+        private enum CollisionRisk { None, Low, High }
 
 
         private void Start()
         {
             statusCheckCoroutine = StartCoroutine(PeriodicStatusCheck());
+            StartCoroutine(CheckPathDeviation());
         }
 
         private void Update()
@@ -202,7 +212,8 @@ namespace CentralControl.RobotControl
             if (path != null && path.Count > 0)
             {
                 personalOccupancyLayer.MergeTimeSpaceMatrix(timeSpaceMatrix);
-                yield return StartCoroutine(MoveAlongPath(path, times, speeds, order.ExecutionTime, targetPosition));
+                currentMovementCoroutine = StartCoroutine(MoveAlongPath(path, times, speeds, order.ExecutionTime, targetPosition));
+                yield return currentMovementCoroutine;
             }
             else
             {
@@ -265,7 +276,13 @@ namespace CentralControl.RobotControl
             }
             else
             {
-                Debug.Log($"Robot {Id}: Path found with {path.Count} steps considering dynamic obstacles");
+                List<string> pathId = new List<string>();
+                foreach (var connectionPoint in path)
+                {
+                    pathId.Add(connectionPoint.Id);
+                }
+
+                Debug.Log($"Robot {Id}: Path found with {path.Count} steps: {string.Join(" -> ", pathId)}");
             }
 
             return (path, times, speeds, timeSpaceMatrix);
@@ -369,6 +386,8 @@ namespace CentralControl.RobotControl
         // replanning module
         private IEnumerator ReplanPath(int retryCount = 0, int maxRetries = 5)
         {
+            isPathValid = false;
+
             if (ordersQueue.Count > 0)
             {
                 if (ordersQueue.TryPeek(out Order currentOrder))
@@ -382,6 +401,8 @@ namespace CentralControl.RobotControl
 
                     if (newPath != null && newPath.Count > 0)
                     {
+                        isPathValid = true;
+                        currentPathIndex = 0;
                         currentMovementCoroutine = StartCoroutine(MoveAlongPath(newPath, newTimes, newSpeeds, currentOrder.ExecutionTime, targetPosition));
                         isAvoidingObstacle = false;
                     }
@@ -414,56 +435,142 @@ namespace CentralControl.RobotControl
             yield return null;
         }
 
-
         // collision detection & avoidance module
+        private float CalculateStoppingDistance()
+        {
+            Rigidbody rb = GetComponent<Rigidbody>();
+            float currentSpeed = rb.velocity.magnitude;
+            
+            float brakingDistance = (currentSpeed * currentSpeed) / (2 * maxDeceleration);
+            
+            return brakingDistance;
+        }
+
+        private void UpdateDetectionRadius()
+        {
+            detectionRadius = Mathf.Max(baseDetectionRadius, 0.7f * CalculateStoppingDistance());
+        }
+
         private void CheckSurroundings()
         {
-            LayerMask groundLayerMask = LayerMask.GetMask("GroundLayer");
-            Collider[] colliders = Physics.OverlapSphere(transform.position, detectionRadius);
+            UpdateDetectionRadius();
+            Vector3 robotVelocity = GetComponent<Rigidbody>().velocity;
+
+            LayerMask detectionMask = ~(LayerMask.GetMask("GroundLayer") | LayerMask.GetMask("BoundaryWall"));
+            Collider[] colliders = Physics.OverlapSphere(transform.position, detectionRadius, detectionMask);
             foreach (var collider in colliders)
             {
-                if (collider.gameObject.layer == LayerMask.NameToLayer("Ground"))
+                if (collider.gameObject == gameObject)
                 {
                     continue;
                 }
 
-                if (collider.gameObject != gameObject && collider.CompareTag("Robot"))
-                {
-                    Vector3 otherPosition = collider.transform.position;
-                    Vector3 directionToOther = otherPosition - transform.position;
-                    float distance = directionToOther.magnitude;
+                Vector3 otherPosition = collider.transform.position;
+                Vector3 directionToOther = otherPosition - transform.position;
+                Vector3 otherVelocity = GetObjectVelocity(collider.gameObject);
+                Vector3 relativeVelocity = otherVelocity - robotVelocity;
 
-                    if (IsPotentialCollision(directionToOther))
+                CollisionRisk risk = AssessCollisionRisk(directionToOther, relativeVelocity);
+
+                if (risk != CollisionRisk.None)
+                {
+                    Debug.LogWarning($"Robot {Id} detected {risk} collision risk with {collider.name} at distance {directionToOther.magnitude}");
+                    
+                    if (risk == CollisionRisk.High && !isAvoidingObstacle)
                     {
-                        if (!isAvoidingObstacle)
-                        {
-                            isAvoidingObstacle = true;
-                            StartCoroutine(StopAndReplan());
-                        }
-                        break;
+                        StartCoroutine(StopAndReplan());
                     }
+                    else if (risk == CollisionRisk.Low && !isAvoidingObstacle)
+                    {
+                        StartCoroutine(JustStop());
+                    }
+                    break;
                 }
             }
         }
 
-        private bool IsPotentialCollision(Vector3 directionToOther)
+        private Vector3 GetObjectVelocity(GameObject obj)
         {
-            Vector3 forward = transform.forward;
-            float angle = Vector3.Angle(forward, directionToOther);
-            float distance = directionToOther.magnitude;
-            if (angle < detectionAngle && distance < detectionRadius)
+            Rigidbody rb = obj.GetComponent<Rigidbody>();
+            if (rb != null)
             {
-                return true;
+                return rb.velocity;
             }
-            return false;
+            
+            RobotController robotController = obj.GetComponent<RobotController>();
+            if (robotController != null)
+            {
+                return robotController.GetCurrentVelocity();
+            }
+            
+            return Vector3.zero;
+        }
+
+        public Vector3 GetCurrentVelocity()
+        {
+            Rigidbody rb = GetComponent<Rigidbody>();
+            if (rb != null)
+            {
+                return rb.velocity;
+            }
+            return Vector3.zero;
+        }
+
+        private CollisionRisk AssessCollisionRisk(Vector3 directionToOther, Vector3 relativeVelocity)
+        {
+            float distance = directionToOther.magnitude;
+
+            if (relativeVelocity.magnitude < 0.01f)
+            {
+                return distance < baseDetectionRadius ? CollisionRisk.Low : CollisionRisk.None;
+            }
+
+            float angle = Vector3.Angle(relativeVelocity, directionToOther);
+
+            if (angle < collisionAngleThreshold)
+            {
+                float timeToClosest = Mathf.Max(0, Vector3.Dot(directionToOther, relativeVelocity) / relativeVelocity.sqrMagnitude);
+                Vector3 closestPoint = directionToOther - relativeVelocity * timeToClosest;
+                float closestDistance = closestPoint.magnitude;
+
+                if (closestDistance < detectionRadius || distance < detectionRadius)
+                {
+                    return angle < highRiskAngleThreshold ? CollisionRisk.High : CollisionRisk.Low;
+                }
+            }
+
+            return CollisionRisk.None;
         }
 
         private IEnumerator StopAndReplan()
         {
+            if (isAvoidingObstacle) yield break;
+
+            isAvoidingObstacle = true;
+
+            Debug.Log($"Robot {Id} starting avoidance maneuver");
+
             StopMovement();
+            yield return StartCoroutine(SimulateStop());
             yield return new WaitForSeconds(StopAndReplanDelay);
-            StartCoroutine(ReplanPath());
+            yield return StartCoroutine(ReplanPath());
+
             isAvoidingObstacle = false;
+            Debug.Log($"Robot {Id} finished avoidance maneuver");
+        }
+
+        private IEnumerator JustStop()
+        {
+            if (isAvoidingObstacle) yield break;
+
+            isAvoidingObstacle = true;
+
+            StopMovement();
+            yield return StartCoroutine(SimulateStop());
+            yield return new WaitForSeconds(StopAndReplanDelay);
+
+            isAvoidingObstacle = false;
+            Debug.Log($"Robot {Id} finished avoidance maneuver");
         }
 
         private void StopMovement()
@@ -473,6 +580,8 @@ namespace CentralControl.RobotControl
                 StopCoroutine(currentMovementCoroutine);
                 currentMovementCoroutine = null;
             }
+
+            StopCoroutine("MoveAlongPath");
             
             Rigidbody rb = GetComponent<Rigidbody>();
             if (rb != null)
@@ -481,6 +590,21 @@ namespace CentralControl.RobotControl
                 rb.angularVelocity = Vector3.zero;
             }
             Debug.Log($"Robot {Id} stopped moving for replanning.");
+        }
+
+        private IEnumerator SimulateStop()
+        {
+            Rigidbody rb = GetComponent<Rigidbody>();
+            Vector3 initialVelocity = rb.velocity;
+            float stopTime = StopAndReplanDelay;
+
+            for (float t = 0; t < stopTime; t += Time.deltaTime)
+            {
+                rb.velocity = Vector3.Lerp(initialVelocity, Vector3.zero, t / stopTime);
+                yield return new WaitForFixedUpdate();
+            }
+
+            rb.velocity = Vector3.zero;
         }
 
         private void OnCollisionEnter(Collision collision)
@@ -495,9 +619,9 @@ namespace CentralControl.RobotControl
 
         private void HandleCollision(GameObject collisionObject)
         {
-            if (collisionObject.layer == LayerMask.NameToLayer("CollisionLayer"))
+            if (collisionObject.layer == LayerMask.NameToLayer("RobotLayer"))
             {
-                Debug.Log($"Robot {Id} collided with another robot.");
+                Debug.Log($"Robot {Id} collided with {collisionObject.name}.");
                 HandleCollisionWithRobot(collisionObject);
             }
             else
@@ -598,6 +722,62 @@ namespace CentralControl.RobotControl
             return personalOccupancyLayer;
         }
 
+        // path detection module
+        private IEnumerator CheckPathDeviation()
+        {
+            while (true)
+            {
+                yield return new WaitForSeconds(pathCheckInterval);
+
+                if (isPathValid && currentPath != null && currentPath.Count > currentPathIndex)
+                {
+                    Vector3 targetPosition = currentPath[currentPathIndex];
+                    float deviationDistance = Vector3.Distance(transform.position, targetPosition);
+
+                    if (deviationDistance > maxPathDeviationDistance)
+                    {
+                        HandlePathDeviation();
+                    }
+                }
+            }
+        }
+
+        private void HandlePathDeviation()
+        {
+            Debug.LogWarning($"Robot {Id} has deviated from the path. Attempting to recover.");
+
+            int nearestPointIndex = FindNearestPathPoint();
+
+            if (nearestPointIndex != -1)
+            {
+                currentPathIndex = nearestPointIndex;
+                Debug.Log($"Robot {Id} found a nearest path point. Resuming from index {currentPathIndex}");
+            }
+            else
+            {
+                Debug.LogWarning($"Robot {Id} unable to recover path. Initiating replan.");
+                StartCoroutine(ReplanPath());
+            }
+        }
+
+        private int FindNearestPathPoint()
+        {
+            float minDistance = float.MaxValue;
+            int nearestIndex = -1;
+
+            for (int i = currentPathIndex; i < currentPath.Count; i++)
+            {
+                float distance = Vector3.Distance(transform.position, currentPath[i]);
+                if (distance < minDistance && distance <= maxPathDeviationDistance)
+                {
+                    minDistance = distance;
+                    nearestIndex = i;
+                }
+            }
+
+            return nearestIndex;
+        }
+        
         // status check module
         private void UpdateRobotStatus()
         {
@@ -605,6 +785,7 @@ namespace CentralControl.RobotControl
             
             SetState(RobotState.Moving, false);
             SetState(RobotState.Picking, false);
+            currentMovementCoroutine = null;
 
             if (previousFreeStatus != IsFree || lastReportedOrderCount != ordersQueue.Count)
             {
@@ -638,6 +819,24 @@ namespace CentralControl.RobotControl
             
             Debug.Log($"Robot {Id} has been reset.");
             StartCoroutine(ProcessOrders());
+        }
+
+        private void OnDrawGizmos()
+        {
+            Gizmos.color = Color.yellow;
+            Gizmos.DrawWireSphere(transform.position, detectionRadius);
+
+            Gizmos.color = new Color(1, 1, 0, 0.1f); 
+            Gizmos.DrawSphere(transform.position, detectionRadius);
+
+            UnityEditor.Handles.Label(transform.position + Vector3.up * 2, $"Detection Radius: {detectionRadius}");
+
+            Rigidbody rb = GetComponent<Rigidbody>();
+            if (rb != null)
+            {
+                Gizmos.color = Color.blue;
+                Gizmos.DrawLine(transform.position, transform.position + rb.velocity * 0.5f);
+            }
         }
 
         private void OnDisable()

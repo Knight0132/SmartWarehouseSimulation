@@ -327,8 +327,8 @@ MonoBehaviour:
   targetIndicator: {fileID: 1239929927}
   selectedAlgorithm: 2
   selectedSearchMethod: 0
-  detectionRadius: 2
-  detectionAngle: 30
+  detectionRadius: 1
+  detectionAngle: 60
   defaultSpeed: 5
   maxAcceleration: 2
   maxDeceleration: 3
@@ -385,6 +385,9 @@ MonoBehaviour:
   interval: 7
   orderCount: 10
   correctionFactor: 0.1
+  dynamicUpdateInterval: 1
+  windowDuration: 60
+  timeStep: 0.2
 --- !u!4 &1051107022
 Transform:
   m_ObjectHideFlags: 0

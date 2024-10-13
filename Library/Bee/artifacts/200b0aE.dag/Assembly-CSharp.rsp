@@ -356,6 +356,7 @@
 "Assets/Script/Central Control/Robot/RobotController.cs"
 "Assets/Script/Central Control/Robot/RobotEvent.cs"
 "Assets/Script/Central Control/Robot/RobotManager.cs"
+"Assets/Script/Map/MapBoundary.cs"
 "Assets/Script/Map/MapLoader.cs"
 "Assets/Script/Map/MapVisualizer.cs"
 "Assets/Script/Map/Schema/CellBoundary.cs"
