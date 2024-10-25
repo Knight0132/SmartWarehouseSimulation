@@ -377,6 +377,7 @@
 "Assets/Script/PathPlanning/Astar_Basic.cs"
 "Assets/Script/PathPlanning/Astar_Traffic_Completed.cs"
 "Assets/Script/PathPlanning/BFS.cs"
+"Assets/Script/PathPlanning/DWAPlanner.cs"
 "Assets/Script/PathPlanning/PathChecker.cs"
 "Assets/Script/PathPlanning/PathPlanner.cs"
 "Assets/Script/PathPlanning/PriorityQueue.cs"

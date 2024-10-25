@@ -125,6 +125,7 @@ namespace Map {
             {
                 mapBoundary.mapWidth = width;
                 mapBoundary.mapLength = length;
+                mapBoundary.Initialize();
             }
             else
             {

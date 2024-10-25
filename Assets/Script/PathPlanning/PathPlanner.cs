@@ -23,7 +23,8 @@ namespace PathPlanning
     public class PathPlanner
     {
         private Graph graph;
-        private DynamicOccupancyLayer dynamicOccupancyLayer;
+        private DynamicOccupancyLayer personalOccupancyLayer;
+        private DynamicOccupancyLayer globalOccupancyLayer;
         private SearchMethod searchMethod;
         private SearchAlgorithm searchAlgorithm;
         private float maxAcceleration;
@@ -42,7 +43,8 @@ namespace PathPlanning
         }
 
         public (List<ConnectionPoint> path, List<float> times, List<float> speeds, bool[,,] timeSpaceMatrix) FindPathWithDynamicObstacles(
-            DynamicOccupancyLayer dynamicOccupancyLayer, 
+            DynamicOccupancyLayer personalOccupancyLayer, 
+            DynamicOccupancyLayer globalOccupancyLayer,
             RoutePoint startPoint, 
             RoutePoint endPoint, 
             float startTime, 
@@ -51,7 +53,16 @@ namespace PathPlanning
             switch (this.searchAlgorithm)
             {
                 case SearchAlgorithm.Astar_Traffic:
-                    return Astar_Traffic.AstarAlgorithm(this.graph, dynamicOccupancyLayer,startPoint, endPoint, startTime, speed, this.maxAcceleration, this.maxDeceleration, this.searchMethod);
+                    return Astar_Traffic.AstarAlgorithm(
+                        this.graph, 
+                        personalOccupancyLayer,
+                        globalOccupancyLayer, 
+                        startPoint, endPoint, 
+                        startTime, 
+                        speed, 
+                        this.maxAcceleration, 
+                        this.maxDeceleration, 
+                        this.searchMethod);
                 // case SearchAlgorithm.Astar_Basic:
                 //     return Astar_Basic.AstarAlgorithm(this.graph, startPoint, endPoint, speed, this.searchMethod);
                 // case SearchAlgorithm.BFS:

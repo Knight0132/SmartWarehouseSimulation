@@ -16,7 +16,7 @@ TagManager:
   - RobotLayer
   - CollisionLayer
   - GroundLayer
-  - 
+  - BoundaryWall
   - 
   - 
   - 

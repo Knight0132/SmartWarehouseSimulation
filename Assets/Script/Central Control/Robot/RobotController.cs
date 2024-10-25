@@ -24,6 +24,8 @@ namespace CentralControl.RobotControl
         public SearchAlgorithm selectedAlgorithm = SearchAlgorithm.Astar_Basic;
         public SearchMethod selectedSearchMethod = SearchMethod.Manhattan_Distance;
         public float baseDetectionRadius = 0.7f;
+        public float emergencyStopDistance = 0.2f;
+        public float slowDownDistance = 1.5f;
         public float defaultSpeed = 5.0f;
         public float maxAcceleration = 2.0f;
         public float maxDeceleration = 5.0f;
@@ -36,6 +38,10 @@ namespace CentralControl.RobotControl
         public bool lastReportedFreeStatus { get; set; }
         public int lastReportedOrderCount { get; set; } = -1;
 
+        public LineRenderer pathLineRenderer;
+        public float lineWidth = 0.1f;
+        public Color pathColor = Color.yellow;
+
         private DynamicOccupancyLayer personalOccupancyLayer;
         private DynamicOccupancyLayer globalOccupancyLayer;
         private Vector3 currentPosition;
@@ -46,6 +52,7 @@ namespace CentralControl.RobotControl
         private ConcurrentQueue<Order> ordersQueue = new ConcurrentQueue<Order>();
         private int isProcessingOrder = 0;
         private bool isProcessingOrdersRunning = false;
+        private Order currentOrder;
         private Coroutine statusCheckCoroutine;
 
         public bool IsMoving => currentStates.Contains(RobotState.Moving);
@@ -58,19 +65,36 @@ namespace CentralControl.RobotControl
         public List<string> listOrdersQueue => new List<string>(ordersQueue.Select(order => order.Id));
         
         private bool isInitialized = false;
+        private DWAPlanner dwaPlanner;
+        private float dwaScoreThreshold = 0.3f;
+        private bool isEmergencyStop = false;
         private float detectionRadius;
-        private float collisionAngleThreshold = 90f;
-        private float highRiskAngleThreshold = 30f;
-        private bool isAvoidingObstacle = false;
         private Coroutine currentMovementCoroutine;
-        private const float StopAndReplanDelay = 1.0f;
+        
+        private float lastReplanTime = 0f;
+        private float replanCooldown = 2f;
 
-        public float maxPathDeviationDistance = 0.5f;
+        public float pathDeviationDistanceThreshold = 1.0f;
         public float pathCheckInterval = 0.5f;
-        private List<Vector3> currentPath;
+        private static readonly float maxPathDeviationDistance = Mathf.Sqrt(5f) / 2f;
+        private List<ConnectionPoint> currentPath;
+        private List<PathSegment> currentMovement;
         private int currentPathIndex;
         private bool isPathValid = false;
-        private enum CollisionRisk { None, Low, High }
+
+        public struct PathSegment
+        {
+            public ConnectionPoint Point;
+            public float Time;
+            public float Speed;
+
+            public PathSegment(ConnectionPoint point, float time, float speed)
+            {
+                Point = point;
+                Time = time;
+                Speed = speed;
+            }
+        }
 
 
         private void Start()
@@ -121,6 +145,8 @@ namespace CentralControl.RobotControl
             ordersQueue = new ConcurrentQueue<Order>();
 
             currentPosition = transform.position;
+            currentPath = new List<ConnectionPoint>();
+            currentMovement = new List<PathSegment>();
 
             this.personalOccupancyLayer = new DynamicOccupancyLayer(
                 indoorSpace,
@@ -132,7 +158,29 @@ namespace CentralControl.RobotControl
                 globalOccupancyLayer.GetTimeStep()
                 );
 
+            InitializeDWAPlanner();
+
             isInitialized = true;
+        }
+
+        private void InitializeDWAPlanner()
+        {
+            dwaPlanner = new DWAPlanner
+            {
+                MaxSpeed = defaultSpeed,
+                MinSpeed = 0.5f,
+                MaxRotSpeed = 0.5f,
+                MaxAccel = maxAcceleration,
+                VelocityResolution = 0.1f,
+                RotationResolution = 0.1f,
+                PredictionTime = 1.0f,
+                HeadingWeight = 0.25f,
+                DistanceWeight = 0.2f,
+                VelocityWeight = 0.3f, 
+                ObstacleWeight = 0.25f,
+                DWAScoreThreshold = dwaScoreThreshold, 
+                ObstacleLayer = ~(LayerMask.GetMask("GroundLayer") | LayerMask.GetMask("BoundaryWall"))
+            };
         }
 
         private void SetState(RobotState state, bool value)
@@ -177,6 +225,7 @@ namespace CentralControl.RobotControl
             isProcessingOrdersRunning = true;
             while (ordersQueue.TryDequeue(out Order order))
             {
+                currentOrder = order;
                 Debug.Log($"Robot {Id} starts processing order {order.Id}");
                 yield return StartCoroutine(ExecuteOrderCoroutine(order));
             }
@@ -255,6 +304,8 @@ namespace CentralControl.RobotControl
         // path planning module
         private (List<ConnectionPoint> path, List<float> times, List<float> speeds, bool[,,] timeSpaceMatrix) PlanPath(Vector3 targetPosition)
         {
+            currentPath.Clear();
+            currentMovement.Clear();
             RoutePoint startPoint = graph.GetRoutePointFromCoordinate(transform.position, true);
             RoutePoint endPoint = graph.GetRoutePointFromCoordinate(targetPosition, false);
 
@@ -268,18 +319,20 @@ namespace CentralControl.RobotControl
             
             PathPlanner pathPlanner = new PathPlanner(graph, selectedAlgorithm, selectedSearchMethod, maxAcceleration, maxDeceleration);
             var (path, times, speeds, timeSpaceMatrix) = pathPlanner.FindPathWithDynamicObstacles(
-                this.personalOccupancyLayer, startPoint, endPoint, Time.time, defaultSpeed);
+                this.personalOccupancyLayer, this.globalOccupancyLayer, startPoint, endPoint, Time.time, defaultSpeed);
             
             if (path == null || path.Count == 0)
             {
-                Debug.LogError($"Robot {Id}: Failed to find path with dynamic obstacles");
+                Debug.LogWarning($"Robot {Id}: Failed to find path with dynamic obstacles");
             }
             else
             {
+                UpdateCurrentMovementInfo(path, times, speeds);
                 List<string> pathId = new List<string>();
                 foreach (var connectionPoint in path)
                 {
                     pathId.Add(connectionPoint.Id);
+                    currentPath.Add(connectionPoint);
                 }
 
                 Debug.Log($"Robot {Id}: Path found with {path.Count} steps: {string.Join(" -> ", pathId)}");
@@ -299,6 +352,12 @@ namespace CentralControl.RobotControl
         // moving module
         private IEnumerator MoveAlongPath(List<ConnectionPoint> path, List<float> times, List<float>speeds, float executionTime, Vector3 finalTargetPosition)
         {
+            if (path == null || path.Count == 0)
+            {
+                StartCoroutine(ReplanPath());
+            }
+            
+            VisualizePath(path);
             SetState(RobotState.Moving, true);
             SetState(RobotState.Picking, false);
             
@@ -315,6 +374,8 @@ namespace CentralControl.RobotControl
                 float speed = speeds[index];
                 Vector3 targetPosition = GetPointVector3(connectionPoint.Point);
 
+                UpdateDWAMaxSpeed(speed);
+
                 yield return StartCoroutine(CorrectTimeAndWait(connectionPoint, targetTime));
 
                 if (index < path.Count - 1)
@@ -328,6 +389,8 @@ namespace CentralControl.RobotControl
             }
 
             yield return StartCoroutine(MoveToPosition(finalTargetPosition, defaultSpeed, applySlowdown: true));
+
+            UpdateDWAMaxSpeed(defaultSpeed);
             
             Debug.Log($"Robot {Id} reached destination, executing order for {executionTime} seconds");
             
@@ -349,25 +412,32 @@ namespace CentralControl.RobotControl
 
             while (Vector3.Distance(transform.position, target) > 0.1f)
             {
+                var (optimalVelocity, needReplan) = dwaPlanner.CalculateVelocity(transform.position, rb.velocity, target);
+                // Debug.Log($"Robot {Id}: Optimal velocity: {optimalVelocity}");
+
                 float distanceToTarget = Vector3.Distance(transform.position, target);
-                float currentSpeed;
 
                 if (distanceToTarget < slowdownDistance)
                 {
                     float t = distanceToTarget / slowdownDistance;
-                    currentSpeed = Mathf.Lerp(minSpeed, maxSpeed, t);
+                    optimalVelocity = Vector3.Lerp(optimalVelocity.normalized * minSpeed, optimalVelocity, t);
                 }
                 else
                 {
-                    currentSpeed = maxSpeed;
+                    rb.velocity = optimalVelocity;
                 }
-
-                Vector3 direction = (target - transform.position).normalized;
-                rb.velocity = direction * currentSpeed;
 
                 yield return null;
             }
             rb.velocity = Vector3.zero;
+        }
+
+        private IEnumerator MoveToNearestPointThenFollowPath(List<ConnectionPoint> remainingPath, List<float> remainingTimes, List<float> remainingSpeeds)
+        {
+            Vector3 nearestPoint = GetPointVector3(remainingPath[0].Point);
+            yield return StartCoroutine(MoveToPosition(nearestPoint, remainingSpeeds[0], true));
+
+            yield return StartCoroutine(MoveAlongPath(remainingPath, remainingTimes, remainingSpeeds, currentOrder.ExecutionTime, GetTargetPosition(currentOrder.PickingPoint)));
         }
 
         private Vector3 GetPointVector3(Geometry point)
@@ -387,52 +457,53 @@ namespace CentralControl.RobotControl
         private IEnumerator ReplanPath(int retryCount = 0, int maxRetries = 5)
         {
             isPathValid = false;
+            ClearPathVisualization();
+            lastReplanTime = Time.time;
 
-            if (ordersQueue.Count > 0)
+            Vector3 targetPosition = GetTargetPosition(currentOrder.PickingPoint);
+
+            while (retryCount < maxRetries)
             {
-                if (ordersQueue.TryPeek(out Order currentOrder))
+                RoutePoint startPoint = graph.GetRoutePointFromCoordinate(transform.position, true);
+                RoutePoint endPoint = graph.GetRoutePointFromCoordinate(targetPosition, false);
+
+                if (startPoint == null || endPoint == null)
                 {
-                    Vector3 targetPosition = GetTargetPosition(currentOrder.PickingPoint);
+                    Debug.LogWarning($"Robot {Id}: Invalid start or end point for path planning. Start: {startPoint}, End: {endPoint}. Retry {retryCount + 1}/{maxRetries}");
+                    retryCount++;
+                    yield return new WaitForSeconds(Mathf.Pow(2, retryCount));
+                    continue;
+                }
 
-                    RoutePoint startPoint = graph.GetRoutePointFromCoordinate(transform.position, true);
-                    RoutePoint endPoint = graph.GetRoutePointFromCoordinate(targetPosition, false);
+                var (newPath, newTimes, newSpeeds, newTimeSpaceMatrix) = PlanPath(targetPosition);
 
-                    var (newPath, newTimes, newSpeeds, newTimeSpaceMatrix) = PlanPath(targetPosition);
-
-                    if (newPath != null && newPath.Count > 0)
-                    {
-                        isPathValid = true;
-                        currentPathIndex = 0;
-                        currentMovementCoroutine = StartCoroutine(MoveAlongPath(newPath, newTimes, newSpeeds, currentOrder.ExecutionTime, targetPosition));
-                        isAvoidingObstacle = false;
-                    }
-                    else
-                    {
-                        if (retryCount < maxRetries)
-                        {
-                            Debug.LogWarning($"Robot {Id}: Replan failed, waiting and retrying... (Attempt {retryCount + 1}/{maxRetries})");
-                            float waitTime = Mathf.Pow(2, retryCount);
-                            yield return new WaitForSeconds(waitTime);
-                            retryCount++;
-                            yield return StartCoroutine(ReplanPath(retryCount, maxRetries));
-                        }
-                        else
-                        {
-                            FailOrder(currentOrder);
-                        }
-                        Debug.LogError($"Robot {Id}: Failed to replan path");
-                    }
+                if (newPath != null && newPath.Count > 0)
+                {
+                    isPathValid = true;
+                    currentPathIndex = 0;
+                    currentPath = newPath;
+                    personalOccupancyLayer.MergeTimeSpaceMatrix(newTimeSpaceMatrix);
+                    currentMovementCoroutine = StartCoroutine(MoveAlongPath(newPath, newTimes, newSpeeds, currentOrder.ExecutionTime, targetPosition));
+                    yield break;
                 }
                 else
                 {
-                    Debug.LogError($"Robot {Id}: Failed to peek at the current order");
+                    Debug.LogWarning($"Robot {Id}: Path planning failed on attempt {retryCount + 1}/{maxRetries}");
+                    retryCount++;
+                    if (retryCount < maxRetries)
+                    {
+                        float waitTime = Mathf.Pow(2, retryCount);
+                        Debug.Log($"Robot {Id}: Waiting {waitTime} seconds before retry...");
+                        yield return new WaitForSeconds(waitTime);
+                    }
                 }
             }
-            else
+
+            if (retryCount >= maxRetries)
             {
-                Debug.Log($"Robot {Id}: No orders to replan for.");
+                Debug.LogError($"Robot {Id}: All path planning attempts failed after {maxRetries} retries");
+                FailOrder(currentOrder);
             }
-            yield return null;
         }
 
         // collision detection & avoidance module
@@ -458,153 +529,70 @@ namespace CentralControl.RobotControl
 
             LayerMask detectionMask = ~(LayerMask.GetMask("GroundLayer") | LayerMask.GetMask("BoundaryWall"));
             Collider[] colliders = Physics.OverlapSphere(transform.position, detectionRadius, detectionMask);
+
+            bool needEmergencyStop = false;
+            bool needSlowDown = false;
+
             foreach (var collider in colliders)
             {
-                if (collider.gameObject == gameObject)
+                if (collider.gameObject == gameObject) continue;
+
+                Vector3 directionToOther = collider.transform.position - transform.position;
+                float distance = directionToOther.magnitude;
+
+                if (distance < emergencyStopDistance)
                 {
-                    continue;
-                }
-
-                Vector3 otherPosition = collider.transform.position;
-                Vector3 directionToOther = otherPosition - transform.position;
-                Vector3 otherVelocity = GetObjectVelocity(collider.gameObject);
-                Vector3 relativeVelocity = otherVelocity - robotVelocity;
-
-                CollisionRisk risk = AssessCollisionRisk(directionToOther, relativeVelocity);
-
-                if (risk != CollisionRisk.None)
-                {
-                    Debug.LogWarning($"Robot {Id} detected {risk} collision risk with {collider.name} at distance {directionToOther.magnitude}");
-                    
-                    if (risk == CollisionRisk.High && !isAvoidingObstacle)
-                    {
-                        StartCoroutine(StopAndReplan());
-                    }
-                    else if (risk == CollisionRisk.Low && !isAvoidingObstacle)
-                    {
-                        StartCoroutine(JustStop());
-                    }
+                    needEmergencyStop = true;
                     break;
                 }
-            }
-        }
-
-        private Vector3 GetObjectVelocity(GameObject obj)
-        {
-            Rigidbody rb = obj.GetComponent<Rigidbody>();
-            if (rb != null)
-            {
-                return rb.velocity;
-            }
-            
-            RobotController robotController = obj.GetComponent<RobotController>();
-            if (robotController != null)
-            {
-                return robotController.GetCurrentVelocity();
-            }
-            
-            return Vector3.zero;
-        }
-
-        public Vector3 GetCurrentVelocity()
-        {
-            Rigidbody rb = GetComponent<Rigidbody>();
-            if (rb != null)
-            {
-                return rb.velocity;
-            }
-            return Vector3.zero;
-        }
-
-        private CollisionRisk AssessCollisionRisk(Vector3 directionToOther, Vector3 relativeVelocity)
-        {
-            float distance = directionToOther.magnitude;
-
-            if (relativeVelocity.magnitude < 0.01f)
-            {
-                return distance < baseDetectionRadius ? CollisionRisk.Low : CollisionRisk.None;
-            }
-
-            float angle = Vector3.Angle(relativeVelocity, directionToOther);
-
-            if (angle < collisionAngleThreshold)
-            {
-                float timeToClosest = Mathf.Max(0, Vector3.Dot(directionToOther, relativeVelocity) / relativeVelocity.sqrMagnitude);
-                Vector3 closestPoint = directionToOther - relativeVelocity * timeToClosest;
-                float closestDistance = closestPoint.magnitude;
-
-                if (closestDistance < detectionRadius || distance < detectionRadius)
+                else if (distance < slowDownDistance)
                 {
-                    return angle < highRiskAngleThreshold ? CollisionRisk.High : CollisionRisk.Low;
+                    needSlowDown = true;
                 }
             }
 
-            return CollisionRisk.None;
+            if (needEmergencyStop && !isEmergencyStop)
+            {
+                StartCoroutine(EmergencyStop());
+            }
+            else if (!isEmergencyStop)
+            {
+                Vector3 targetPosition = GetTargetPosition(currentOrder.PickingPoint);
+
+                var (optimalVelocity, needReplan) = dwaPlanner.CalculateVelocity(
+                    transform.position,
+                    robotVelocity,
+                    targetPosition
+                );
+
+                if (needSlowDown)
+                {
+                    optimalVelocity *= 0.5f;
+                }
+
+                GetComponent<Rigidbody>().velocity = optimalVelocity;
+
+                if (needReplan && Time.time - lastReplanTime > replanCooldown)
+                {
+                    StartCoroutine(ReplanPath());
+                }
+            }
         }
 
-        private IEnumerator StopAndReplan()
+        private IEnumerator EmergencyStop()
         {
-            if (isAvoidingObstacle) yield break;
+            isEmergencyStop = true;
+            Debug.LogWarning($"Robot {Id} performing emergency stop!");
 
-            isAvoidingObstacle = true;
+            Rigidbody rb = GetComponent<Rigidbody>();
+            rb.velocity = Vector3.zero;
+            rb.angularVelocity = Vector3.zero;
 
-            Debug.Log($"Robot {Id} starting avoidance maneuver");
+            yield return new WaitForSeconds(1.0f);
 
-            StopMovement();
-            yield return StartCoroutine(SimulateStop());
-            yield return new WaitForSeconds(StopAndReplanDelay);
             yield return StartCoroutine(ReplanPath());
 
-            isAvoidingObstacle = false;
-            Debug.Log($"Robot {Id} finished avoidance maneuver");
-        }
-
-        private IEnumerator JustStop()
-        {
-            if (isAvoidingObstacle) yield break;
-
-            isAvoidingObstacle = true;
-
-            StopMovement();
-            yield return StartCoroutine(SimulateStop());
-            yield return new WaitForSeconds(StopAndReplanDelay);
-
-            isAvoidingObstacle = false;
-            Debug.Log($"Robot {Id} finished avoidance maneuver");
-        }
-
-        private void StopMovement()
-        {
-            if (currentMovementCoroutine != null)
-            {
-                StopCoroutine(currentMovementCoroutine);
-                currentMovementCoroutine = null;
-            }
-
-            StopCoroutine("MoveAlongPath");
-            
-            Rigidbody rb = GetComponent<Rigidbody>();
-            if (rb != null)
-            {
-                rb.velocity = Vector3.zero;
-                rb.angularVelocity = Vector3.zero;
-            }
-            Debug.Log($"Robot {Id} stopped moving for replanning.");
-        }
-
-        private IEnumerator SimulateStop()
-        {
-            Rigidbody rb = GetComponent<Rigidbody>();
-            Vector3 initialVelocity = rb.velocity;
-            float stopTime = StopAndReplanDelay;
-
-            for (float t = 0; t < stopTime; t += Time.deltaTime)
-            {
-                rb.velocity = Vector3.Lerp(initialVelocity, Vector3.zero, t / stopTime);
-                yield return new WaitForFixedUpdate();
-            }
-
-            rb.velocity = Vector3.zero;
+            isEmergencyStop = false;
         }
 
         private void OnCollisionEnter(Collision collision)
@@ -619,34 +607,8 @@ namespace CentralControl.RobotControl
 
         private void HandleCollision(GameObject collisionObject)
         {
-            if (collisionObject.layer == LayerMask.NameToLayer("RobotLayer"))
-            {
-                Debug.Log($"Robot {Id} collided with {collisionObject.name}.");
-                HandleCollisionWithRobot(collisionObject);
-            }
-            else
-            {
-                Debug.Log($"Robot {Id} collided with {collisionObject.name}");
-                HandleCollisionWithObject(collisionObject);
-            }
-        }
-
-        private void HandleCollisionWithRobot(GameObject otherRobot)
-        {
-            if (!isAvoidingObstacle)
-            {
-                isAvoidingObstacle = true;
-                StartCoroutine(StopAndReplan());
-            }
-        }
-
-        private void HandleCollisionWithObject(GameObject otherObject)
-        {
-            if (!isAvoidingObstacle)
-            {
-                isAvoidingObstacle = true;
-                StartCoroutine(StopAndReplan());
-            }
+            Debug.Log($"Robot {Id} collided with {collisionObject.name}.");
+            StartCoroutine(EmergencyStop());
         }
 
         private void HandleTrigger(GameObject triggeringObject)
@@ -662,43 +624,29 @@ namespace CentralControl.RobotControl
             if (newPosition != currentPosition)
             {
                 currentPosition = newPosition;
-                UpdatePersonalLayerFromGlobal();
             }
 
             CellSpace currentCellSpace = indoorSpace.GetCellSpaceFromCoordinates(currentPosition);
-            personalOccupancyLayer.SetOccupancy(currentCellSpace, Time.time, true);
+            if (currentCellSpace != null)
+            {
+                personalOccupancyLayer.SetOccupancy(currentCellSpace, Time.time, true);
+            }
+            else
+            {
+                Debug.LogError($"Robot {Id}: Current position is not within any cell space.");
+            }
         }
 
-        private void UpdatePersonalLayerFromGlobal()
+        public void UpdateGlobalLayer(DynamicOccupancyLayer globalLayer)
         {
-            if (personalOccupancyLayer == null)
-            {
-                Debug.LogError($"Robot {Id}: Personal occupancy layer is null.");
-                return;
-            }
-
             if (globalOccupancyLayer == null)
             {
                 Debug.LogError($"Robot {Id}: Global occupancy layer is null.");
                 return;
             }
-
-            bool[,,] globalMatrix = globalOccupancyLayer.GetTimeSpaceMatrix();
-            if (globalMatrix == null)
-            {
-                Debug.LogError($"Robot {Id}: Global time space matrix is null.");
-                return;
-            }
-
-            try
-            {
-                personalOccupancyLayer.MergeTimeSpaceMatrix(globalMatrix);
-            }
-            catch (System.Exception e)
-            {
-                Debug.LogError($"Robot {Id}: Error merging time space matrix: {e.Message}");
-            }
+            this.globalOccupancyLayer = globalLayer;
         }
+
         private IEnumerator CorrectTimeAndWait(ConnectionPoint connectionPoint, float targetTime)
         {
             while (Time.time < targetTime - TIME_CORRECTION_THRESHOLD)
@@ -731,31 +679,58 @@ namespace CentralControl.RobotControl
 
                 if (isPathValid && currentPath != null && currentPath.Count > currentPathIndex)
                 {
-                    Vector3 targetPosition = currentPath[currentPathIndex];
+                    Vector3 targetPosition = GetPointVector3(currentPath[currentPathIndex].Point);
                     float deviationDistance = Vector3.Distance(transform.position, targetPosition);
 
                     if (deviationDistance > maxPathDeviationDistance)
                     {
-                        HandlePathDeviation();
+                        HandlePathDeviation(deviationDistance);
                     }
                 }
             }
         }
 
-        private void HandlePathDeviation()
+        private void HandlePathDeviation(float deviationDistance)
         {
-            Debug.LogWarning($"Robot {Id} has deviated from the path. Attempting to recover.");
+            Debug.LogWarning($"Robot {Id} has deviated from the path. Deviation distance: {deviationDistance}. Attempting to recover.");
 
             int nearestPointIndex = FindNearestPathPoint();
 
             if (nearestPointIndex != -1)
             {
-                currentPathIndex = nearestPointIndex;
-                Debug.Log($"Robot {Id} found a nearest path point. Resuming from index {currentPathIndex}");
+                if (deviationDistance <= pathDeviationDistanceThreshold)
+                {
+                    currentPathIndex = nearestPointIndex;
+                    List<PathSegment> remainingMovement = currentMovement.GetRange(nearestPointIndex, currentPath.Count - nearestPointIndex);
+                    List<ConnectionPoint> remainingPath = new List<ConnectionPoint>();
+                    List<float> remainingTimes = new List<float>();
+                    List<float> remainingSpeeds = new List<float>();
+
+                    foreach (PathSegment segment in remainingMovement)
+                    {
+                        remainingPath.Add(segment.Point);
+                        remainingTimes.Add(segment.Time);
+                        remainingSpeeds.Add(segment.Speed);
+                    }
+                    
+                    if (currentMovementCoroutine != null)
+                    {
+                        StopCoroutine(currentMovementCoroutine);
+                    }
+
+                    currentMovementCoroutine = StartCoroutine(MoveToNearestPointThenFollowPath(remainingPath, remainingTimes, remainingSpeeds));
+                    
+                    Debug.Log($"Robot {Id} found a nearest path point. Resuming from index {currentPathIndex}");
+                }
+                else
+                {
+                    Debug.LogWarning($"Robot {Id} deviation too large. Initiating replan.");
+                    StartCoroutine(ReplanPath());
+                }
             }
             else
             {
-                Debug.LogWarning($"Robot {Id} unable to recover path. Initiating replan.");
+                Debug.LogWarning($"Robot {Id} unable to find nearest path point. Initiating replan.");
                 StartCoroutine(ReplanPath());
             }
         }
@@ -767,8 +742,8 @@ namespace CentralControl.RobotControl
 
             for (int i = currentPathIndex; i < currentPath.Count; i++)
             {
-                float distance = Vector3.Distance(transform.position, currentPath[i]);
-                if (distance < minDistance && distance <= maxPathDeviationDistance)
+                float distance = Vector3.Distance(transform.position, GetPointVector3(currentPath[i].Point));
+                if (distance < minDistance && distance <= pathDeviationDistanceThreshold)
                 {
                     minDistance = distance;
                     nearestIndex = i;
@@ -806,7 +781,21 @@ namespace CentralControl.RobotControl
                 CentralController.NotifyRobotFree(this);
             }
         }
-        
+
+        private void UpdateCurrentMovementInfo(List<ConnectionPoint> path, List<float> times, List<float> speeds)
+        {
+            for (int i = 0; i < path.Count; i++)
+            {
+                currentMovement.Add(new PathSegment(path[i], times[i], speeds[i]));
+            }
+        }
+
+        private void UpdateDWAMaxSpeed(float newMaxSpeed)
+        {
+            dwaPlanner.MaxSpeed = newMaxSpeed;
+            // Debug.Log($"Robot {Id}: Updated DWA max speed to {newMaxSpeed}");
+        }
+
         public void ResetRobot()
         {
             StopAllCoroutines();
@@ -821,6 +810,12 @@ namespace CentralControl.RobotControl
             StartCoroutine(ProcessOrders());
         }
 
+        private void OnDisable()
+        {
+            StopAllCoroutines();
+        }
+
+        // visualization module
         private void OnDrawGizmos()
         {
             Gizmos.color = Color.yellow;
@@ -836,12 +831,41 @@ namespace CentralControl.RobotControl
             {
                 Gizmos.color = Color.blue;
                 Gizmos.DrawLine(transform.position, transform.position + rb.velocity * 0.5f);
+                Gizmos.color = Color.red;
+                Gizmos.DrawRay(transform.position, (GetTargetPosition(currentOrder.PickingPoint) - transform.position).normalized);
             }
         }
 
-        private void OnDisable()
+        private void VisualizePath(List<ConnectionPoint> path)
         {
-            StopAllCoroutines();
+            if (pathLineRenderer == null)
+            {
+                pathLineRenderer = gameObject.AddComponent<LineRenderer>();
+            }
+
+            pathLineRenderer.positionCount = path.Count;
+            pathLineRenderer.startWidth = lineWidth;
+            pathLineRenderer.endWidth = lineWidth;
+            pathLineRenderer.material = new Material(Shader.Find("Sprites/Default"));
+            pathLineRenderer.startColor = pathColor;
+            pathLineRenderer.endColor = pathColor;
+
+            Vector3[] positions = new Vector3[path.Count];
+            for (int i = 0; i < path.Count; i++)
+            {
+                Point point = (Point)path[i].Point;
+                positions[i] = new Vector3((float)point.X, 0.1f, (float)point.Y);
+            }
+
+            pathLineRenderer.SetPositions(positions);
+        }
+
+        private void ClearPathVisualization()
+        {
+            if (pathLineRenderer != null)
+            {
+                pathLineRenderer.positionCount = 0;
+            }
         }
     }
 }

@@ -14,6 +14,7 @@ namespace PathPlanning
         public static (List<ConnectionPoint> path, List<float> times, List<float> speeds, bool[,,] timeSpaceMatrix) AstarAlgorithm(
             Graph graph, 
             DynamicOccupancyLayer personalOccupancyLayer,
+            DynamicOccupancyLayer globalOccupancyLayer,
             RoutePoint startPosition, 
             RoutePoint endPosition, 
             float startTime, 
@@ -93,7 +94,10 @@ namespace PathPlanning
                     float timeToReachNeighbor = distance / currentSpeed;
                     float arrivalTimeAtNeighbor = timeAtNode[current] + timeToReachNeighbor;
 
-                    bool isOccupied = personalOccupancyLayer.IsOccupied(neighborConnection, arrivalTimeAtNeighbor);
+                    bool isOccupiedInPersonalOccupancyLayer = personalOccupancyLayer.IsOccupied(neighborConnection, arrivalTimeAtNeighbor);
+                    bool isOccupiedInGlobalOccupancyLayer = globalOccupancyLayer.IsOccupied(neighborConnection, arrivalTimeAtNeighbor);
+                    bool isOccupied = isOccupiedInPersonalOccupancyLayer || isOccupiedInGlobalOccupancyLayer;
+
                     float occupancyPenalty = isOccupied ? float.PositiveInfinity : 0f;
 
                     float tentativeGScore = gScore[current] + (distance / currentSpeed) + occupancyPenalty;

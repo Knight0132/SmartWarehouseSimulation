@@ -45,7 +45,6 @@ namespace CentralControl
             EventManager.Instance.OnRobotsInitialized += OnRobotsInitialized;
             orderAssignmentSelector = new OrderAssignmentSelector();
             OnRobotBecameFree += HandleRobotBecameFree;
-            StartCoroutine(UpdateGlobalOccupancyLayerRoutine());
         }
 
         private void OnMapLoaded()
@@ -69,6 +68,7 @@ namespace CentralControl
             Debug.Log("Robots initialized, starting order generation...");
             StartCoroutine(StartGeneratingOrders());
             StartCoroutine(PeriodicSystemCheck());
+            StartCoroutine(UpdateGlobalOccupancyLayerRoutine());
         }
 
         private void OnDestroy()
@@ -238,6 +238,11 @@ namespace CentralControl
 
             globalOccupancyLayer.DeleteOldData(Time.time - windowDuration);
             globalOccupancyLayer.UpdateTime(Time.time);
+
+            foreach (var robot in robotManager.GetAllRobots())
+            {
+                robot.UpdateGlobalLayer(globalOccupancyLayer);
+            }
         }
 
         private void MergeRobotOccupancyLayer(RobotController robot)

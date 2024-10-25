@@ -11,7 +11,7 @@ namespace Map
         public float wallHeight = 5f;
         public float wallThickness = 1f;
 
-        private void Start()
+        public void Initialize()
         {
             CreateBoundaryWalls();
         }

@@ -9075,7 +9075,7 @@
         {
             "id": "c26-c1",
             "edge": "LINESTRING(0.5 1.5, 0.5 0.5)",
-            "boundary": "LINESTRING(1 1, 2 1)",
+            "boundary": "LINESTRING(0 1, 1 1)",
             "source": "c26",
             "target": "c1",
             "properties": {}
@@ -9779,7 +9779,7 @@
         {
             "id": "c188-c189",
             "edge": "LINESTRING(12.5 7.5, 13.5 7.5)",
-            "boundary": "LINESTRING(13 7, 14 7)",
+            "boundary": "LINESTRING(13 7, 13 8)",
             "source": "c188",
             "target": "c189",
             "properties": {}
@@ -9787,7 +9787,7 @@
         {
             "id": "c189-c164",
             "edge": "LINESTRING(13.5 7.5, 13.5 6.5)",
-            "boundary": "LINESTRING(14 6, 14 6)",
+            "boundary": "LINESTRING(13 7, 14 7)",
             "source": "c189",
             "target": "c164",
             "properties": {}
@@ -9995,7 +9995,7 @@
         {
             "id": "c212-c211",
             "edge": "LINESTRING(11.5 8.5, 10.5 8.5)",
-            "boundary": "LINESTRING(11 8, 12 8)",
+            "boundary": "LINESTRING(11 8, 11 9)",
             "source": "c212",
             "target": "c211",
             "properties": {}
@@ -10723,7 +10723,7 @@
         {
             "id": "c307-c332",
             "edge": "LINESTRING(6.5 12.5, 6.5 13.5)",
-            "boundary": "LINESTRING(5 13, 7 13)",
+            "boundary": "LINESTRING(6 13, 7 13)",
             "source": "c307",
             "target": "c332",
             "properties": {}
