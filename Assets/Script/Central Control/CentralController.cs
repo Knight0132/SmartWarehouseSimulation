@@ -17,6 +17,7 @@ namespace CentralControl
         public RobotManager robotManager;
         public IndoorSpace indoorSpace;
         public MapLoader mapLoader;
+        public IntersectionAreaManager intersectionAreaManager;
         public float width, length;
         public Graph graph;
         public float interval = 5f;
@@ -53,9 +54,11 @@ namespace CentralControl
             InitializeGlobalOccupancyLayer();
             if (globalOccupancyLayer != null)
             {
-                Debug.Log("Global occupancy layer initialized.");
+                Debug.Log("Global occupancy layer initialized, initializing intersections...");
+                intersectionAreaManager.InitializeIntersectionAreas(mapLoader.indoorSpace);
+                
                 Debug.Log("Map loaded, initializing robots...");
-                robotManager.InitializeRobots(mapLoader.indoorSpace, mapLoader.GetGraph(), mapLoader.GetMapGrid(), globalOccupancyLayer);
+                robotManager.InitializeRobots(mapLoader.indoorSpace, mapLoader.GetGraph(), mapLoader.GetMapGrid(), globalOccupancyLayer, intersectionAreaManager);
             }
             else
             {

@@ -172,6 +172,16 @@ namespace Map {
             return null;
         }
 
+        public List<ConnectionPoint> GetAllConnectionPoints()
+        {
+            List<ConnectionPoint> connectionPoints = new List<ConnectionPoint>();
+            foreach (var cellBoundary in _cellBoundaries)
+            {
+                connectionPoints.Add(cellBoundary.ConvertToConnectionPoint());
+            }
+            return connectionPoints;
+        }
+
         public ConnectionPoint GetConnectionPointFromId(string id)
         {
             foreach (var cellBoundary in _cellBoundaries)
@@ -220,6 +230,24 @@ namespace Map {
             }
             Debug.Log("RLineGroup not found");
             return null;
+        }
+
+        public List<Layer> GetAllLayers()
+        {
+            return _layers;
+        }
+
+        public List<Layer> GetLayerFromType(string type)
+        {
+            List<Layer> layers = new List<Layer>();
+            foreach (var layer in _layers)
+            {
+                if (layer.Properties["type"].Equals(type))
+                {
+                    layers.Add(layer);
+                }
+            }
+            return layers;
         }
 
         public Layer GetLayerFromCellSpaceId(string id)

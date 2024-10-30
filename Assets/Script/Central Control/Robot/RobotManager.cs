@@ -17,6 +17,7 @@ namespace CentralControl.RobotControl
         private Graph graph;
         private MapGrid mapGrid;
         private DynamicOccupancyLayer globalOccupancyLayer;
+        private IntersectionAreaManager intersectionAreaManager;
         private List<RobotController> robots = new List<RobotController>();
 
         public int TotalRobots => robots.Count;
@@ -27,12 +28,18 @@ namespace CentralControl.RobotControl
             CheckRobotStatus();
         }
 
-        public void InitializeRobots(IndoorSpace indoorSpace, Graph graph, MapGrid mapGrid, DynamicOccupancyLayer globalOccupancyLayer)
+        public void InitializeRobots(
+            IndoorSpace indoorSpace, 
+            Graph graph, 
+            MapGrid mapGrid, 
+            DynamicOccupancyLayer globalOccupancyLayer, 
+            IntersectionAreaManager intersectionAreaManager)
         {
             this.indoorSpace = indoorSpace;
             this.graph = graph;
             this.mapGrid = mapGrid;
             this.globalOccupancyLayer = globalOccupancyLayer;
+            this.intersectionAreaManager = intersectionAreaManager;
 
             for (int i = 0; i < numberOfRobots; i++)
             {
@@ -87,7 +94,7 @@ namespace CentralControl.RobotControl
                     rb.useGravity = false;
                     rb.constraints = RigidbodyConstraints.FreezeRotation;
                 }
-                robot.InitializeRobot(id, indoorSpace, graph, mapGrid, globalOccupancyLayer);
+                robot.InitializeRobot(id, indoorSpace, graph, mapGrid, globalOccupancyLayer, intersectionAreaManager);
 
                 Transform targetIndicatorInstance = Instantiate(targetIndicatorPrefab);
                 robot.targetIndicator = targetIndicatorInstance;
