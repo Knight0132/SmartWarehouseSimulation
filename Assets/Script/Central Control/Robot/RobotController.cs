@@ -68,8 +68,8 @@ namespace CentralControl.RobotControl
         private float dwaScoreThreshold = 0.3f;
         private IntersectionAreaManager intersectionManager;
         private bool isDWAEnabled = false;
-        private const float INTERSECTION_ACTIVATION_DISTANCE = 3.0f;
-        private const int LOOK_AHEAD_POINTS = 3;
+        private const float INTERSECTION_ACTIVATION_DISTANCE = 1.0f;
+        private const int LOOK_AHEAD_POINTS = 2;
         private bool isEmergencyStop = false;
         private float detectionRadius;
         private Coroutine currentMovementCoroutine;
@@ -103,7 +103,7 @@ namespace CentralControl.RobotControl
         private void Start()
         {
             statusCheckCoroutine = StartCoroutine(PeriodicStatusCheck());
-            StartCoroutine(CheckPathDeviation());
+            // StartCoroutine(CheckPathDeviation());
         }
 
         private void Update()
@@ -157,6 +157,7 @@ namespace CentralControl.RobotControl
 
             currentPosition = transform.position;
             currentPath = new List<ConnectionPoint>();
+            currentPathIndex = 0;
             currentMovement = new List<PathSegment>();
 
             this.personalOccupancyLayer = new DynamicOccupancyLayer(
@@ -182,9 +183,9 @@ namespace CentralControl.RobotControl
                 MinSpeed = 0.5f,
                 MaxRotSpeed = 0.5f,
                 MaxAccel = maxAcceleration,
-                VelocityResolution = 0.1f,
+                VelocityResolution = 0.05f,
                 RotationResolution = 0.1f,
-                PredictionTime = 1.0f,
+                PredictionTime = 1.5f,
                 HeadingWeight = 0.25f,
                 DistanceWeight = 0.2f,
                 VelocityWeight = 0.3f, 
@@ -364,7 +365,7 @@ namespace CentralControl.RobotControl
             SetState(RobotState.Moving, true);
             SetState(RobotState.Picking, false);
             
-            for (int index = 0; index < path.ToArray().Length; index++)
+            for (int index = 0; index < path.Count; index++)
             {
                 if (!IsMoving)
                 {
@@ -520,18 +521,26 @@ namespace CentralControl.RobotControl
             if (currentPath == null || currentPath.Count <= currentPathIndex)
                 return;
 
-            // check if upcoming path points contain an intersection entry point
+            Debug.Log($"Robot {Id}: Checking intersection. Current state: isDWAEnabled={isDWAEnabled}, " +
+                    $"Position={transform.position}, PathIndex={currentPathIndex}/{currentPath.Count}");
+
             bool shouldActivateDWA = CheckUpcomingIntersectionEntry();
-            // check if current point is an intersection exit point
             bool shouldDeactivateDWA = CheckCurrentIntersectionExit();
 
             if (shouldActivateDWA && !isDWAEnabled)
             {
+                Debug.Log($"Robot {Id}: Activating DWA");
                 EnableDWA();
             }
             else if (shouldDeactivateDWA && isDWAEnabled)
             {
+                Debug.Log($"Robot {Id}: Deactivating DWA");
                 DisableDWA();
+            }
+            else
+            {
+                Debug.Log($"Robot {Id}: No change in DWA state. shouldActivate={shouldActivateDWA}, " +
+                        $"shouldDeactivate={shouldDeactivateDWA}, isDWAEnabled={isDWAEnabled}");
             }
         }
 
@@ -539,6 +548,16 @@ namespace CentralControl.RobotControl
         {
             // check if the robot is approaching an intersection entry point
             
+            Vector3 robotPosition = transform.position;
+            foreach (var intersection in intersectionManager.GetAllIntersections().Values)
+            {
+                if (intersection.Contains(robotPosition))
+                {
+                    Debug.Log($"Robot {Id}: Already in intersection area");
+                    return true;
+                }
+            }
+
             for (int i = currentPathIndex; i < Mathf.Min(currentPathIndex + LOOK_AHEAD_POINTS, currentPath.Count); i++)
             {
                 ConnectionPoint point = currentPath[i];
@@ -564,17 +583,20 @@ namespace CentralControl.RobotControl
         private bool CheckCurrentIntersectionExit()
         {
             // check if the robot has reached an intersection exit point
-            
+
             if (currentPathIndex >= currentPath.Count)
                 return false;
 
             ConnectionPoint currentPoint = currentPath[currentPathIndex];
             foreach (var intersection in intersectionManager.GetAllIntersections().Values)
             {
-                if (intersection.ExitPoints.Any(ep => ep.Id == currentPoint.Id))
+                if (!intersection.Contains(transform.position))
                 {
-                    Debug.Log($"Robot {Id}: Reached intersection exit point");
-                    return true;
+                    if (intersection.ExitPoints.Any(ep => ep.Id == currentPoint.Id))
+                    {
+                        Debug.Log($"Robot {Id}: Reached intersection exit point and outside intersection area");
+                        return true;
+                    }
                 }
             }
             return false;
@@ -583,6 +605,12 @@ namespace CentralControl.RobotControl
         private void EnableDWA()
         {
             // enable DWA and adjust the weights for better obstacle avoidance
+
+            if (currentPath == null || currentPath.Count == 0 || currentPathIndex >= currentPath.Count)
+            {
+                Debug.LogWarning($"Robot {Id}: Cannot enable DWA without valid path");
+                return;
+            }
             
             isDWAEnabled = true;
             dwaPlanner.HeadingWeight = 0.25f;
@@ -657,6 +685,13 @@ namespace CentralControl.RobotControl
 
             else
             {
+                if (currentPath == null || currentPath.Count == 0 || currentPathIndex >= currentPath.Count)
+                {
+                    Debug.LogWarning($"Robot {Id}: Invalid path or path index. Path count: {currentPath?.Count}, Current index: {currentPathIndex}");
+                    StartCoroutine(ReplanPath());
+                    return;
+                }
+
                 Vector3 robotVelocity = GetComponent<Rigidbody>().velocity;
                 Vector3 targetPosition = GetPointVector3(currentPath[currentPathIndex].Point);
 
@@ -666,7 +701,14 @@ namespace CentralControl.RobotControl
                     targetPosition
                 );
 
-                GetComponent<Rigidbody>().velocity = optimalVelocity;
+                // smooth the velocity change
+                GetComponent<Rigidbody>().velocity = Vector3.SmoothDamp(
+                    GetComponent<Rigidbody>().velocity,
+                    optimalVelocity,
+                    ref robotVelocity,
+                    0.1f,
+                    maxAcceleration
+                );
 
                 if (needReplan && Time.time - lastReplanTime > replanCooldown)
                 {
@@ -895,6 +937,23 @@ namespace CentralControl.RobotControl
 
         private void UpdateCurrentMovementInfo(List<ConnectionPoint> path, List<float> times, List<float> speeds)
         {
+            if (path == null || times == null || speeds == null)
+            {
+                Debug.LogError($"Robot {Id}: Null path or timing information");
+                return;
+            }
+
+            if (path.Count != times.Count || path.Count != speeds.Count)
+            {
+                Debug.LogError($"Robot {Id}: Mismatched array lengths - Path: {path.Count}, Times: {times.Count}, Speeds: {speeds.Count}");
+                return;
+            }
+
+            currentPathIndex = 0;
+            currentPath.Clear();
+            currentPath.AddRange(path);
+            currentMovement.Clear();
+
             for (int i = 0; i < path.Count; i++)
             {
                 currentMovement.Add(new PathSegment(path[i], times[i], speeds[i]));
