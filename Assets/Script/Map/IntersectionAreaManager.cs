@@ -55,7 +55,6 @@ namespace Map
             if (intersectionArea.IntersectionCells.Count > 0)
             {
                 _intersectionAreas.Add(intersectionArea.Id, intersectionArea);
-                Debug.Log($"Created intersection area {intersectionArea.Id} with {intersectionArea.IntersectionCells.Count} cells");
             }
         }
 

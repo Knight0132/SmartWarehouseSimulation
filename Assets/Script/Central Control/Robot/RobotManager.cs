@@ -159,31 +159,37 @@ namespace CentralControl.RobotControl
             {
                 bool statusChanged = false;
 
-                if (!robot.IsAvailable && (robot.lastReportedAvailability || robot.lastReportedOrderCount != robot.GetRobotOrdersQueueCount))
+                // Check if robot is busy
+                if (!robot.IsAvailable && (robot.lastReportedAvailability || 
+                    robot.lastReportedOrderCount != robot.GetRobotOrdersQueueCount))
                 {
-                    Debug.Log($"Robot {robot.Id} is busy with {robot.GetRobotOrdersQueueCount} orders: {string.Join(", ", robot.listOrdersQueue)}");
+                    Debug.Log($"Robot {robot.Id} is busy with {robot.GetRobotOrdersQueueCount} orders: " +
+                            $"{string.Join(", ", robot.listOrdersQueue)}");
                     statusChanged = true;
                 }
                 
+                // Check if robot is free
                 if (robot.IsFree && !robot.lastReportedFreeStatus)
                 {
                     Debug.Log($"Robot {robot.Id} is now free at position {robot.transform.position}");
                     statusChanged = true;
                 }
 
+                // Check if robot is stuck
                 if (robot.IsFree && !robot.IsProcessingOrders && robot.GetRobotOrdersQueueCount > 0)
                 {
-                    Debug.LogWarning($"Robot {robot.Id} is free but not processing orders. This might indicate an issue.");
+                    Debug.LogWarning($"Robot {robot.Id} is free but not processing orders. " +
+                                $"This might indicate an issue.");
                     statusChanged = true;
                 }
 
+                // Update status if changed
                 if (statusChanged)
                 {
+                    // Update last reported status
                     robot.lastReportedAvailability = robot.IsAvailable;
                     robot.lastReportedFreeStatus = robot.IsFree;
                     robot.lastReportedOrderCount = robot.GetRobotOrdersQueueCount;
-
-                    globalOccupancyLayer.SetOccupancy(indoorSpace.GetCellSpaceFromCoordinates(robot.transform.position), Time.time, !robot.IsFree);
                 }
             }
         }

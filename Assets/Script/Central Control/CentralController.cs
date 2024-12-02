@@ -23,7 +23,7 @@ namespace CentralControl
         public float interval = 5f;
         public int orderCount = 10;
         public float correctionFactor = 0.1f;
-        public float dynamicUpdateInterval = 1.0f;
+        public float dynamicUpdateInterval = 0.5f;
         public float windowDuration = 300f;
         public float timeStep = 0.1f;
 
@@ -89,7 +89,7 @@ namespace CentralControl
             }
         }
 
-        // order generation module
+        # region order generation module
         IEnumerator StartGeneratingOrders()
         {
             generatingOrders = true;
@@ -138,8 +138,9 @@ namespace CentralControl
             // Debug.Log($"Generated order {id} at {cellSpace.Id} with execution time {executionTime}");
             return newOrder;
         }
+        # endregion
 
-        // order dispatch module
+        # region order dispatch module
         private void DispatchOrders()
         {
             lock (dispatchLock)
@@ -208,18 +209,15 @@ namespace CentralControl
                 }
             }
         }
+        # endregion
 
-        // global occupancy layer module
+        #region global occupancy layer module
         private void InitializeGlobalOccupancyLayer()
         {
             globalOccupancyLayer = new DynamicOccupancyLayer(
                 mapLoader.indoorSpace,
-                mapLoader.GetGraph(),
-                mapLoader.GetMapGrid(),
-                mapLoader.GetCellSpaceGridPositions(),
-                Time.time,
                 windowDuration,
-                timeStep
+                Time.time
             );
         }
 
@@ -234,13 +232,12 @@ namespace CentralControl
 
         private void UpdateGlobalOccupancyLayer()
         {
-            foreach (var robot in robotManager.GetAllRobots())
-            {
-                MergeRobotOccupancyLayer(robot);
-            }
+            float currentTime = Time.time;
+            float windowStart = currentTime - windowDuration;
 
-            globalOccupancyLayer.DeleteOldData(Time.time - windowDuration);
-            globalOccupancyLayer.UpdateTime(Time.time);
+            CleanupGlobalOccupancyLayer(windowStart);
+            
+            MergeRobotOccupancyLayer(robotManager);
 
             foreach (var robot in robotManager.GetAllRobots())
             {
@@ -248,18 +245,35 @@ namespace CentralControl
             }
         }
 
-        private void MergeRobotOccupancyLayer(RobotController robot)
+        private void CleanupGlobalOccupancyLayer(float cleanupBeforeTime)
         {
-            var robotLayer = robot.GetPersonalOccupancyLayer();
-            globalOccupancyLayer.MergeTimeSpaceMatrix(robotLayer.GetTimeSpaceMatrix());
+            globalOccupancyLayer.ClearOccupancyInTimeWindow(
+                float.MinValue,
+                cleanupBeforeTime,
+                null
+            );
+        }
+
+        private void MergeRobotOccupancyLayer(RobotManager robots)
+        {
+            foreach (var robot in robots.GetAllRobots())
+            {
+                var robotLayer = robot.GetPersonalOccupancyLayer();
+                globalOccupancyLayer.MergeLayer(
+                    robotLayer,
+                    lastUpdateTime,
+                    Time.time
+                );
+            }
         }
 
         public DynamicOccupancyLayer GetGlobalOccupancyLayer()
         {
             return globalOccupancyLayer;
         }
+        # endregion
 
-        // system check module
+        # region system check module
         private IEnumerator PeriodicSystemCheck()
         {
             while (true)
@@ -300,5 +314,6 @@ namespace CentralControl
                 }
             }
         }
+        # endregion
     }
 }

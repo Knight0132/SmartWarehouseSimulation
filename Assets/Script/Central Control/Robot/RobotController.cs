@@ -25,7 +25,7 @@ namespace CentralControl.RobotControl
         public SearchMethod selectedSearchMethod = SearchMethod.Manhattan_Distance;
         public float baseDetectionRadius = 0.7f;
         public float emergencyStopDistance = 0.2f;
-        public float defaultSpeed = 5.0f;
+        public float defaultSpeed = 2.0f;
         public float maxAcceleration = 2.0f;
         public float maxDeceleration = 5.0f;
         public int MaxOrder = 20;
@@ -37,15 +37,19 @@ namespace CentralControl.RobotControl
         public bool lastReportedFreeStatus { get; set; }
         public int lastReportedOrderCount { get; set; } = -1;
 
+        # region path visualization paramters
         public LineRenderer pathLineRenderer;
         public float lineWidth = 0.1f;
         public Color pathColor = Color.yellow;
+        # endregion
 
+        # region map parameters
         private DynamicOccupancyLayer personalOccupancyLayer;
         private DynamicOccupancyLayer globalOccupancyLayer;
-        private Vector3 currentPosition;
         private const float TIME_CORRECTION_THRESHOLD = 0.5f;
+        # endregion
 
+        # region robot status parameters
         private HashSet<RobotState> currentStates = new HashSet<RobotState>();
         private HashSet<RobotState> lastReportedState = new HashSet<RobotState>();
         private ConcurrentQueue<Order> ordersQueue = new ConcurrentQueue<Order>();
@@ -62,28 +66,52 @@ namespace CentralControl.RobotControl
         public bool IsProcessingOrders => isProcessingOrdersRunning;
         public int GetRobotOrdersQueueCount => ordersQueue.Count;
         public List<string> listOrdersQueue => new List<string>(ordersQueue.Select(order => order.Id));
-        
+        # endregion
+
+        # region system status parameters
         private bool isInitialized = false;
+        # endregion
+
+        # region dwa parameters
         private DWAPlanner dwaPlanner;
         private float dwaScoreThreshold = 0.3f;
         private IntersectionAreaManager intersectionManager;
         private bool isDWAEnabled = false;
         private const float INTERSECTION_ACTIVATION_DISTANCE = 1.0f;
         private const int LOOK_AHEAD_POINTS = 2;
-        private bool isEmergencyStop = false;
+        private float lastDWAStateChangeTime = 0f;
+        private const float DWA_STATE_COOLDOWN = 2.0f;
+        private bool isIntersectionControlled = false;
+        # endregion
+
+        # region collision avoidance parameters
         private float detectionRadius;
         private Coroutine currentMovementCoroutine;
+        private bool isEmergencyStop = false;
         
         private float lastReplanTime = 0f;
         private float replanCooldown = 2f;
+        # endregion
 
+        # region path deviation parameters
         public float pathDeviationDistanceThreshold = 1.0f;
         public float pathCheckInterval = 0.5f;
         private static readonly float maxPathDeviationDistance = Mathf.Sqrt(5f) / 2f;
+        # endregion
+
+        # region robot movement parameters 
+        private Vector3 currentPosition;
         private List<ConnectionPoint> currentPath;
         private List<PathSegment> currentMovement;
         private int currentPathIndex;
+        private string currentPlanId;
         private bool isPathValid = false;
+        # endregion
+
+        # region dynamic occupancy layer parameters
+        private CellSpace lastCellSpace;
+        private Dictionary<string, float> cellSpaceEntryTimes;
+        # endregion
 
         public struct PathSegment
         {
@@ -103,7 +131,8 @@ namespace CentralControl.RobotControl
         private void Start()
         {
             statusCheckCoroutine = StartCoroutine(PeriodicStatusCheck());
-            // StartCoroutine(CheckPathDeviation());
+            StartCoroutine(CheckPathDeviation());
+            cellSpaceEntryTimes = new Dictionary<string, float>();
         }
 
         private void Update()
@@ -162,12 +191,8 @@ namespace CentralControl.RobotControl
 
             this.personalOccupancyLayer = new DynamicOccupancyLayer(
                 indoorSpace,
-                graph,
-                mapGrid,
-                globalOccupancyLayer.GetcellSpaceCentroids(), 
-                Time.time,
                 globalOccupancyLayer.GetWindowDuration(), 
-                globalOccupancyLayer.GetTimeStep()
+                Time.time
                 );
 
             InitializeDWAPlanner();
@@ -257,12 +282,12 @@ namespace CentralControl.RobotControl
             List<ConnectionPoint> path = new List<ConnectionPoint>();
             List<float> times = new List<float>();
             List<float> speeds = new List<float>();
-            bool[,,] timeSpaceMatrix = new bool[0, 0, 0];
+            string newPlanId = null;
 
-            (path, times, speeds, timeSpaceMatrix) = PlanPath(targetPosition);
+            (path, times, speeds, newPlanId) = PlanPath(targetPosition);
             if (path != null && path.Count > 0)
             {
-                personalOccupancyLayer.MergeTimeSpaceMatrix(timeSpaceMatrix);
+                currentPlanId = newPlanId;
                 currentMovementCoroutine = StartCoroutine(MoveAlongPath(path, times, speeds, order.ExecutionTime, targetPosition));
                 yield return currentMovementCoroutine;
             }
@@ -313,10 +338,11 @@ namespace CentralControl.RobotControl
             return new Vector3((float)point.X, mapGrid.height, (float)point.Y);
         }
 
-        private (List<ConnectionPoint> path, List<float> times, List<float> speeds, bool[,,] timeSpaceMatrix) PlanPath(Vector3 targetPosition)
+        private (List<ConnectionPoint> path, List<float> times, List<float> speeds, string planId) PlanPath(Vector3 targetPosition, string currentPlanId = null)
         {
             currentPath.Clear();
             currentMovement.Clear();
+
             RoutePoint startPoint = graph.GetRoutePointFromCoordinate(transform.position, true);
             RoutePoint endPoint = graph.GetRoutePointFromCoordinate(targetPosition, false);
 
@@ -328,9 +354,23 @@ namespace CentralControl.RobotControl
                 return (null, null, null, null);
             }
             
-            PathPlanner pathPlanner = new PathPlanner(graph, selectedAlgorithm, selectedSearchMethod, maxAcceleration, maxDeceleration);
-            var (path, times, speeds, timeSpaceMatrix) = pathPlanner.FindPathWithDynamicObstacles(
-                this.personalOccupancyLayer, this.globalOccupancyLayer, startPoint, endPoint, Time.time, defaultSpeed);
+            PathPlanner pathPlanner = new PathPlanner(
+                graph, 
+                indoorSpace,
+                selectedAlgorithm, 
+                selectedSearchMethod, 
+                Id.ToString(), 
+                maxAcceleration, 
+                maxDeceleration);
+            var (path, times, speeds, newPlanId) = pathPlanner.FindPathWithDynamicObstacles(
+                this.personalOccupancyLayer, 
+                this.globalOccupancyLayer, 
+                startPoint, 
+                endPoint, 
+                Id.ToString(),
+                currentPlanId,
+                Time.time, 
+                defaultSpeed);
             
             if (path == null || path.Count == 0)
             {
@@ -347,9 +387,10 @@ namespace CentralControl.RobotControl
                 }
 
                 Debug.Log($"Robot {Id}: Path found with {path.Count} steps: {string.Join(" -> ", pathId)}");
+                Debug.Log($"Robot {Id}: New plan ID: {newPlanId}");
             }
 
-            return (path, times, speeds, timeSpaceMatrix);
+            return (path, times, speeds, newPlanId);
         }
         # endregion
 
@@ -380,7 +421,7 @@ namespace CentralControl.RobotControl
 
                 UpdateDWAMaxSpeed(speed);
 
-                yield return StartCoroutine(CorrectTimeAndWait(connectionPoint, targetTime));
+                yield return StartCoroutine(CorrectTimeAndWait(targetTime));
 
                 if (index < path.Count - 1)
                 {
@@ -466,6 +507,7 @@ namespace CentralControl.RobotControl
             lastReplanTime = Time.time;
 
             Vector3 targetPosition = GetTargetPosition(currentOrder.PickingPoint);
+            string planIdForReplanning = currentPlanId;
 
             while (retryCount < maxRetries)
             {
@@ -480,14 +522,15 @@ namespace CentralControl.RobotControl
                     continue;
                 }
 
-                var (newPath, newTimes, newSpeeds, newTimeSpaceMatrix) = PlanPath(targetPosition);
+                var (newPath, newTimes, newSpeeds, newPlanId) = PlanPath(targetPosition, planIdForReplanning);
 
                 if (newPath != null && newPath.Count > 0)
                 {
                     isPathValid = true;
                     currentPathIndex = 0;
                     currentPath = newPath;
-                    personalOccupancyLayer.MergeTimeSpaceMatrix(newTimeSpaceMatrix);
+                    currentPlanId = newPlanId;
+
                     currentMovementCoroutine = StartCoroutine(MoveAlongPath(newPath, newTimes, newSpeeds, currentOrder.ExecutionTime, targetPosition));
                     yield break;
                 }
@@ -512,7 +555,7 @@ namespace CentralControl.RobotControl
         }
         # endregion
 
-        # region dwaplanner module
+        # region DWA control module
         private void CheckIntersectionAndControlDWA()
         {
             // check if the robot is approaching an intersection entry point or has reached an intersection exit point,
@@ -521,21 +564,34 @@ namespace CentralControl.RobotControl
             if (currentPath == null || currentPath.Count <= currentPathIndex)
                 return;
 
+            // check if dwa control is on cooldown
+            if (Time.time - lastDWAStateChangeTime < DWA_STATE_COOLDOWN)
+            {
+                return;
+            }
+
             Debug.Log($"Robot {Id}: Checking intersection. Current state: isDWAEnabled={isDWAEnabled}, " +
                     $"Position={transform.position}, PathIndex={currentPathIndex}/{currentPath.Count}");
 
+            // check if the robot is approaching an intersection entry point or has reached an intersection exit point
             bool shouldActivateDWA = CheckUpcomingIntersectionEntry();
             bool shouldDeactivateDWA = CheckCurrentIntersectionExit();
 
-            if (shouldActivateDWA && !isDWAEnabled)
+            // only when dwa is not controlled by collision avoidance, we can control it by intersection
+            if (shouldActivateDWA && !isDWAEnabled && !isEmergencyStop)
             {
-                Debug.Log($"Robot {Id}: Activating DWA");
+                Debug.Log($"Robot {Id}: Activating DWA due to intersection");
                 EnableDWA();
+                isIntersectionControlled = true;
+                lastDWAStateChangeTime = Time.time;
             }
-            else if (shouldDeactivateDWA && isDWAEnabled)
+            else if (shouldDeactivateDWA && isDWAEnabled && isIntersectionControlled)
             {
-                Debug.Log($"Robot {Id}: Deactivating DWA");
+                // only when dwa is controlled by intersection, we can deactivate it
+                Debug.Log($"Robot {Id}: Deactivating DWA due to intersection exit");
                 DisableDWA();
+                isIntersectionControlled = false;
+                lastDWAStateChangeTime = Time.time;
             }
             else
             {
@@ -604,32 +660,43 @@ namespace CentralControl.RobotControl
 
         private void EnableDWA()
         {
-            // enable DWA and adjust the weights for better obstacle avoidance
-
             if (currentPath == null || currentPath.Count == 0 || currentPathIndex >= currentPath.Count)
             {
                 Debug.LogWarning($"Robot {Id}: Cannot enable DWA without valid path");
                 return;
             }
-            
-            isDWAEnabled = true;
-            dwaPlanner.HeadingWeight = 0.25f;
-            dwaPlanner.DistanceWeight = 0.2f;
-            dwaPlanner.VelocityWeight = 0.3f;
-            dwaPlanner.ObstacleWeight = 0.25f;
-            Debug.Log($"Robot {Id}: DWA enabled");
+
+            if (!isDWAEnabled)
+            {
+                isDWAEnabled = true;
+                dwaPlanner.HeadingWeight = 0.25f;
+                dwaPlanner.DistanceWeight = 0.2f;
+                dwaPlanner.VelocityWeight = 0.3f;
+                dwaPlanner.ObstacleWeight = 0.25f;
+                lastDWAStateChangeTime = Time.time;
+                Debug.Log($"Robot {Id}: DWA enabled");
+            }
         }
 
         private void DisableDWA()
         {
-            // disable DWA and restore the original weights
-            
-            isDWAEnabled = false;
-            dwaPlanner.HeadingWeight = 0.4f;
-            dwaPlanner.DistanceWeight = 0.3f;
-            dwaPlanner.VelocityWeight = 0.2f;
-            dwaPlanner.ObstacleWeight = 0.1f;
-            Debug.Log($"Robot {Id}: DWA disabled");
+            if (isDWAEnabled)
+            {
+                if (!CanDisableDWA())
+                {
+                    Debug.Log($"Robot {Id}: Cannot safely disable DWA yet");
+                    return;
+                }
+
+                isDWAEnabled = false;
+                isIntersectionControlled = false;
+                dwaPlanner.HeadingWeight = 0.4f;
+                dwaPlanner.DistanceWeight = 0.3f;
+                dwaPlanner.VelocityWeight = 0.2f;
+                dwaPlanner.ObstacleWeight = 0.1f;
+                lastDWAStateChangeTime = Time.time;
+                Debug.Log($"Robot {Id}: DWA disabled");
+            }
         }
         # endregion
 
@@ -638,9 +705,7 @@ namespace CentralControl.RobotControl
         {
             Rigidbody rb = GetComponent<Rigidbody>();
             float currentSpeed = rb.velocity.magnitude;
-            
             float brakingDistance = (currentSpeed * currentSpeed) / (2 * maxDeceleration);
-            
             return brakingDistance;
         }
 
@@ -649,41 +714,162 @@ namespace CentralControl.RobotControl
             detectionRadius = Mathf.Max(baseDetectionRadius, 0.7f * CalculateStoppingDistance());
         }
 
+        private float CalculateCollisionPredictionThreshold()
+        {
+            Rigidbody rb = GetComponent<Rigidbody>();
+            float currentSpeed = rb.velocity.magnitude;
+            
+            const float BASE_PREDICTION_TIME = 1.0f;
+            const float MIN_PREDICTION_TIME = 0.5f;
+            const float MAX_PREDICTION_TIME = 3.0f;
+            
+            const float MIN_SPEED = 0.5f;
+            const float MAX_SPEED = 5.0f;
+            
+            if (currentSpeed <= MIN_SPEED)
+                return MAX_PREDICTION_TIME;
+            
+            if (currentSpeed >= MAX_SPEED)
+                return MIN_PREDICTION_TIME;
+            
+            float speedFactor = (currentSpeed - MIN_SPEED) / (MAX_SPEED - MIN_SPEED);
+            float predictionTime = Mathf.Lerp(MAX_PREDICTION_TIME, MIN_PREDICTION_TIME, speedFactor);
+            
+            float stoppingTime = currentSpeed / maxDeceleration;
+            
+            predictionTime = Mathf.Max(predictionTime, stoppingTime + BASE_PREDICTION_TIME);
+            
+            return Mathf.Clamp(predictionTime, MIN_PREDICTION_TIME, MAX_PREDICTION_TIME);
+        }
+
+        private bool CheckFrontalCollisionRisk(Vector3 otherPosition, Vector3 otherVelocity)
+        {
+            Vector3 relativePosition = otherPosition - transform.position;
+            Vector3 robotVelocity = GetComponent<Rigidbody>().velocity;
+            Vector3 relativeVelocity = robotVelocity - otherVelocity;
+            
+            if (relativeVelocity.magnitude > 0.1f)
+            {
+                float angleThreshold = 90f;
+                float angle = Vector3.Angle(robotVelocity, -otherVelocity);
+                
+                if (angle < angleThreshold)
+                {
+                    // Time to Collision - TTC
+                    float ttc = relativePosition.magnitude / relativeVelocity.magnitude;
+                    
+                    float predictionThreshold = CalculateCollisionPredictionThreshold();
+                    
+                    float minSafeDistance = Mathf.Max(
+                        baseDetectionRadius,
+                        robotVelocity.magnitude * predictionThreshold * 0.5f
+                    );
+                    
+                    bool timeRisk = ttc < predictionThreshold;
+                    bool distanceRisk = relativePosition.magnitude < minSafeDistance;
+                    
+                    if (timeRisk || distanceRisk)
+                    {
+                        return true;
+                    }
+                }
+            }
+            
+            return false;
+        }
+
+        private bool CanDisableDWA()
+        {
+            LayerMask detectionMask = ~(LayerMask.GetMask("GroundLayer") | LayerMask.GetMask("BoundaryWall"));
+            Collider[] colliders = Physics.OverlapSphere(transform.position, detectionRadius * 1.5f, detectionMask);
+            
+            foreach (var collider in colliders)
+            {
+                if (collider.gameObject == gameObject) continue;
+                
+                // 获取其他机器人的信息
+                RobotController otherRobot = collider.GetComponent<RobotController>();
+                if (otherRobot != null)
+                {
+                    Vector3 otherPosition = otherRobot.transform.position;
+                    Vector3 otherVelocity = otherRobot.GetComponent<Rigidbody>().velocity;
+                    
+                    // 检查距离和相对速度
+                    float distance = Vector3.Distance(transform.position, otherPosition);
+                    if (distance < detectionRadius * 1.2f || CheckFrontalCollisionRisk(otherPosition, otherVelocity))
+                    {
+                        return false;
+                    }
+                }
+            }
+            
+            // 检查是否回到了原计划路径附近
+            if (currentPath != null && currentPath.Count > currentPathIndex)
+            {
+                Vector3 plannedPosition = GetPointVector3(currentPath[currentPathIndex].Point);
+                float deviationDistance = Vector3.Distance(transform.position, plannedPosition);
+                if (deviationDistance > pathDeviationDistanceThreshold)
+                {
+                    return false;
+                }
+            }
+            
+            return true;
+        }
+
         private void CheckSurroundings()
         {
             CheckIntersectionAndControlDWA();
+            UpdateDetectionRadius();
 
-            if (!isDWAEnabled)
+            // get surrounding objects
+            Vector3 robotVelocity = GetComponent<Rigidbody>().velocity;
+            LayerMask detectionMask = ~(LayerMask.GetMask("GroundLayer") | LayerMask.GetMask("BoundaryWall"));
+            Collider[] colliders = Physics.OverlapSphere(transform.position, detectionRadius, detectionMask);
+
+            bool potentialCollision = false;
+            bool needEmergencyStop = false;
+
+            foreach (var collider in colliders)
             {
-                UpdateDetectionRadius();
-                Vector3 robotVelocity = GetComponent<Rigidbody>().velocity;
+                if (collider.gameObject == gameObject) continue;
 
-                LayerMask detectionMask = ~(LayerMask.GetMask("GroundLayer") | LayerMask.GetMask("BoundaryWall"));
-                Collider[] colliders = Physics.OverlapSphere(transform.position, detectionRadius, detectionMask);
+                RobotController otherRobot = collider.GetComponent<RobotController>();
+                Vector3 directionToOther = collider.transform.position - transform.position;
+                float distance = directionToOther.magnitude;
 
-                bool needEmergencyStop = false;
-
-                foreach (var collider in colliders)
+                // check if the robot is too close to another robot
+                if (distance < emergencyStopDistance)
                 {
-                    if (collider.gameObject == gameObject) continue;
-
-                    Vector3 directionToOther = collider.transform.position - transform.position;
-                    float distance = directionToOther.magnitude;
-
-                    if (distance < emergencyStopDistance)
-                    {
-                        needEmergencyStop = true;
-                        break;
-                    }
+                    needEmergencyStop = true;
+                    break;
                 }
 
-                if (needEmergencyStop && !isEmergencyStop)
+                // check if the robot is at risk of frontal collision with another robot
+                if (otherRobot != null)
                 {
-                    StartCoroutine(EmergencyStop());
+                    Vector3 otherVelocity = otherRobot.GetComponent<Rigidbody>().velocity;
+                    if (CheckFrontalCollisionRisk(collider.transform.position, otherVelocity))
+                    {
+                        potentialCollision = true;
+                    }
                 }
             }
 
-            else
+            if (needEmergencyStop)
+            {
+                StartCoroutine(EmergencyStop());
+            }
+            else if (potentialCollision && !isDWAEnabled)
+            {
+                EnableDWA();
+            }
+            else if (isDWAEnabled && !potentialCollision && CanDisableDWA())
+            {
+                DisableDWA();
+            }
+
+            if (isDWAEnabled)
             {
                 if (currentPath == null || currentPath.Count == 0 || currentPathIndex >= currentPath.Count)
                 {
@@ -692,16 +878,13 @@ namespace CentralControl.RobotControl
                     return;
                 }
 
-                Vector3 robotVelocity = GetComponent<Rigidbody>().velocity;
                 Vector3 targetPosition = GetPointVector3(currentPath[currentPathIndex].Point);
-
                 var (optimalVelocity, needReplan) = dwaPlanner.CalculateVelocity(
                     transform.position,
                     robotVelocity,
                     targetPosition
                 );
 
-                // smooth the velocity change
                 GetComponent<Rigidbody>().velocity = Vector3.SmoothDamp(
                     GetComponent<Rigidbody>().velocity,
                     optimalVelocity,
@@ -719,6 +902,7 @@ namespace CentralControl.RobotControl
 
         private IEnumerator EmergencyStop()
         {
+            // Stop -> Replan -> DWA avoid obstacles
             isEmergencyStop = true;
             Debug.LogWarning($"Robot {Id} performing emergency stop!");
 
@@ -727,9 +911,10 @@ namespace CentralControl.RobotControl
             rb.angularVelocity = Vector3.zero;
 
             yield return new WaitForSeconds(1.0f);
-
             yield return StartCoroutine(ReplanPath());
 
+            isIntersectionControlled = false;
+            EnableDWA();
             isEmergencyStop = false;
         }
 
@@ -738,17 +923,16 @@ namespace CentralControl.RobotControl
             HandleCollision(collision.gameObject);
         }
 
-        private void OnTriggerEnter(Collider other)
-        {
-            HandleTrigger(other.gameObject);
-        }
-
         private void HandleCollision(GameObject collisionObject)
         {
             Debug.Log($"Robot {Id} collided with {collisionObject.name}.");
             StartCoroutine(EmergencyStop());
         }
 
+        private void OnTriggerEnter(Collider other)
+        {
+            HandleTrigger(other.gameObject);
+        }
         private void HandleTrigger(GameObject triggeringObject)
         {
             Debug.Log($"Robot {Id} triggered by {triggeringObject.name}");
@@ -758,7 +942,6 @@ namespace CentralControl.RobotControl
         # region dynamic occupancy layer module
         private void UpdatePersonalLayer()
         {
-            // Two function: Update real-time personal layer and update the latest global layer information
             Vector3 newPosition = transform.position;
             if (newPosition != currentPosition)
             {
@@ -768,10 +951,47 @@ namespace CentralControl.RobotControl
             CellSpace currentCellSpace = indoorSpace.GetCellSpaceFromCoordinates(currentPosition);
             if (currentCellSpace != null)
             {
-                personalOccupancyLayer.SetOccupancy(currentCellSpace, Time.time, true);
+                // Check if the robot has entered a new cell space
+                if (lastCellSpace != null && lastCellSpace.Id != currentCellSpace.Id)
+                {
+                    // End the occupancy in the last CellSpace
+                    personalOccupancyLayer.EndCurrentOccupancy(
+                        lastCellSpace.Id,
+                        Id.ToString(),
+                        Time.time
+                    );
+
+                    // Update the entry time for the new CellSpace
+                    personalOccupancyLayer.UpdateCurrentOccupancy(
+                        currentCellSpace.Id,
+                        Time.time,
+                        Id.ToString()
+                    );
+                }
+                else if (lastCellSpace == null)
+                {
+                    // If the robot has just started moving
+                    personalOccupancyLayer.UpdateCurrentOccupancy(
+                        currentCellSpace.Id,
+                        Time.time,
+                        Id.ToString()
+                    );
+                }
+
+                lastCellSpace = currentCellSpace;
             }
             else
             {
+                // If the robot is not within any cell space
+                if (lastCellSpace != null)
+                {
+                    personalOccupancyLayer.EndCurrentOccupancy(
+                        lastCellSpace.Id,
+                        Id.ToString(),
+                        Time.time
+                    );
+                    lastCellSpace = null;
+                }
                 Debug.LogError($"Robot {Id}: Current position is not within any cell space.");
             }
         }
@@ -786,22 +1006,40 @@ namespace CentralControl.RobotControl
             this.globalOccupancyLayer = globalLayer;
         }
 
-        private IEnumerator CorrectTimeAndWait(ConnectionPoint connectionPoint, float targetTime)
+        private IEnumerator CorrectTimeAndWait(float targetTime)
         {
             while (Time.time < targetTime - TIME_CORRECTION_THRESHOLD)
             {
                 float timeDifference = Time.time - targetTime;
+
                 if (Mathf.Abs(timeDifference) > TIME_CORRECTION_THRESHOLD)
                 {
-                    UpdateTimeSpaceMatrix(connectionPoint, Time.time);
+                    UpdateTimeSpaceMatrix(Time.time);
                 }
                 yield return null;
             }
         }
 
-        private void UpdateTimeSpaceMatrix(ConnectionPoint connectionPoint, float newTime)
+        private void UpdateTimeSpaceMatrix(float currentTime)
         {
-            personalOccupancyLayer.UpdateTimeForIndex(connectionPoint, newTime);
+            CellSpace currentCellSpace = indoorSpace.GetCellSpaceFromCoordinates(transform.position);
+            
+            if (currentCellSpace != null && lastCellSpace != null && 
+                currentCellSpace.Id == lastCellSpace.Id && 
+                cellSpaceEntryTimes.TryGetValue(currentCellSpace.Id, out float entryTime))
+            {
+                personalOccupancyLayer.SetPlannedOccupancy(
+                    currentCellSpace.Id,
+                    entryTime,
+                    currentTime,
+                    Id.ToString(),
+                    "RealTimeMovement"
+                );
+            }
+            else
+            {
+                Debug.LogWarning($"Robot {Id}: Cannot update time-space matrix - invalid state");
+            }
         }
 
         public DynamicOccupancyLayer GetPersonalOccupancyLayer()
@@ -973,6 +1211,20 @@ namespace CentralControl.RobotControl
             SetState(RobotState.Picking, false);
             isProcessingOrdersRunning = false;
             Interlocked.Exchange(ref isProcessingOrder, 0);
+
+            if (!string.IsNullOrEmpty(currentPlanId))
+            {
+                foreach (var cellSpace in indoorSpace.CellSpaces)
+                {
+                    personalOccupancyLayer.ClearPlannedOccupancy(
+                        cellSpace.Id,
+                        Id.ToString(),
+                        currentPlanId,
+                        Time.time
+                    );
+                }
+                currentPlanId = null;
+            }
             
             while (ordersQueue.TryDequeue(out _)) { }
             
@@ -982,6 +1234,33 @@ namespace CentralControl.RobotControl
 
         private void OnDisable()
         {
+            if (lastCellSpace != null && cellSpaceEntryTimes.TryGetValue(lastCellSpace.Id, out float entryTime))
+            {
+                personalOccupancyLayer.SetPlannedOccupancy(
+                    lastCellSpace.Id,
+                    entryTime,
+                    Time.time,
+                    Id.ToString(),
+                    "RealTimeMovement"
+                );
+            }
+
+            if (!string.IsNullOrEmpty(currentPlanId))
+            {
+                foreach (var cellSpace in indoorSpace.CellSpaces)
+                {
+                    personalOccupancyLayer.ClearPlannedOccupancy(
+                        cellSpace.Id,
+                        Id.ToString(),
+                        currentPlanId,
+                        Time.time
+                    );
+                }
+            }
+
+            cellSpaceEntryTimes.Clear();
+            lastCellSpace = null;
+            currentPlanId = null;
             StopAllCoroutines();
         }
         # endregion

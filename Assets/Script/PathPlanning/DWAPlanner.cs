@@ -6,7 +6,7 @@ namespace PathPlanning
 {
     public class DWAPlanner
     {
-        public float MaxSpeed { get; set; } = 5.0f;
+        public float MaxSpeed { get; set; } = 2.0f;
         public float MinSpeed { get; set; } = 0.5f;
         public float MaxRotSpeed { get; set; } = 1.0f;
         public float MaxAccel { get; set; } = 3.0f;

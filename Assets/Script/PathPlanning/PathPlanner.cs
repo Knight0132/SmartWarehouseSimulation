@@ -23,30 +23,43 @@ namespace PathPlanning
     public class PathPlanner
     {
         private Graph graph;
+        private IndoorSpace indoorSpace;
         private DynamicOccupancyLayer personalOccupancyLayer;
         private DynamicOccupancyLayer globalOccupancyLayer;
         private SearchMethod searchMethod;
         private SearchAlgorithm searchAlgorithm;
+        private string robotId;
         private float maxAcceleration;
         private float maxDeceleration;
         public RoutePoint startPoint;
         public RoutePoint endPoint;
         public float speed;
         
-        public PathPlanner(Graph graph, SearchAlgorithm algorithm, SearchMethod method, float maxAcceleration, float maxDeceleration)
+        public PathPlanner(
+            Graph graph, 
+            IndoorSpace indoorSpace,
+            SearchAlgorithm algorithm, 
+            SearchMethod method, 
+            string robotId, 
+            float maxAcceleration, 
+            float maxDeceleration)
         {
             this.graph = graph;
+            this.indoorSpace = indoorSpace;
             this.searchAlgorithm = algorithm;
             this.searchMethod = method;
+            this.robotId = robotId;
             this.maxAcceleration = maxAcceleration;
             this.maxDeceleration = maxDeceleration;
         }
 
-        public (List<ConnectionPoint> path, List<float> times, List<float> speeds, bool[,,] timeSpaceMatrix) FindPathWithDynamicObstacles(
+        public (List<ConnectionPoint> path, List<float> times, List<float> speeds, string planId) FindPathWithDynamicObstacles(
             DynamicOccupancyLayer personalOccupancyLayer, 
             DynamicOccupancyLayer globalOccupancyLayer,
             RoutePoint startPoint, 
             RoutePoint endPoint, 
+            string robotId,
+            string currentPlanId,
             float startTime, 
             float speed)
         {
@@ -55,9 +68,13 @@ namespace PathPlanning
                 case SearchAlgorithm.Astar_Traffic:
                     return Astar_Traffic.AstarAlgorithm(
                         this.graph, 
+                        this.indoorSpace,
                         personalOccupancyLayer,
                         globalOccupancyLayer, 
-                        startPoint, endPoint, 
+                        startPoint, 
+                        endPoint, 
+                        robotId, 
+                        currentPlanId,
                         startTime, 
                         speed, 
                         this.maxAcceleration, 

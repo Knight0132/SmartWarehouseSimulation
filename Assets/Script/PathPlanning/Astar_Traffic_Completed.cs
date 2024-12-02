@@ -1,6 +1,7 @@
+using System;
 using System.Collections;
 using System.Collections.Generic;
-using System;
+using System.Linq;
 using UnityEngine;
 using Map;
 using System.Diagnostics;
@@ -11,12 +12,15 @@ namespace PathPlanning
 {
     public class Astar_Traffic
     {
-        public static (List<ConnectionPoint> path, List<float> times, List<float> speeds, bool[,,] timeSpaceMatrix) AstarAlgorithm(
+        public static (List<ConnectionPoint> path, List<float> times, List<float> speeds, string planId) AstarAlgorithm(
             Graph graph, 
+            IndoorSpace indoorSpace,
             DynamicOccupancyLayer personalOccupancyLayer,
             DynamicOccupancyLayer globalOccupancyLayer,
             RoutePoint startPosition, 
             RoutePoint endPosition, 
+            string robotId,
+            string currentPlanId,
             float startTime, 
             float defaultSpeed,
             float maxAcceleration,
@@ -26,23 +30,41 @@ namespace PathPlanning
             if (graph == null)
             {
                 UnityEngine.Debug.LogError("Graph is null");
-                return (new List<ConnectionPoint>(), new List<float>(), new List<float>(), new bool[0, 0, 0]);
+                return (new List<ConnectionPoint>(), new List<float>(), new List<float>(), null);
             }
 
             if (startPosition == null || endPosition == null)
             {
                 UnityEngine.Debug.LogError("Start position or end position is null");
-                return (new List<ConnectionPoint>(), new List<float>(), new List<float>(), new bool[0, 0, 0]);
+                return (new List<ConnectionPoint>(), new List<float>(), new List<float>(), null);
             }
 
             if (startPosition.ConnectionPoint == null || endPosition.ConnectionPoint == null)
             {
                 UnityEngine.Debug.LogError("Start or end ConnectionPoint is null");
-                return (new List<ConnectionPoint>(), new List<float>(), new List<float>(), new bool[0, 0, 0]);
+                return (new List<ConnectionPoint>(), new List<float>(), new List<float>(), null);
             }
 
             UnityEngine.Debug.Log($"Starting A* algorithm from {startPosition.ConnectionPoint.Id} to {endPosition.ConnectionPoint.Id}");
 
+            if (!string.IsNullOrEmpty(currentPlanId))
+            {
+                ClearUnusedReservations(personalOccupancyLayer, robotId, currentPlanId, startTime);
+            }
+
+            string newPlanId;
+            if (string.IsNullOrEmpty(currentPlanId))
+            {
+                // 如果是新的规划，直接使用时间戳作为计划ID的一部分
+                newPlanId = $"Robot_{robotId}_Plan_{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}";
+            }
+            else
+            {
+                // 如果是重规划，基于当前计划ID生成新的ID
+                string timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds().ToString();
+                newPlanId = $"{currentPlanId}_Replan_{timestamp}";
+            }
+            
             var stopwatch = new Stopwatch();
             stopwatch.Start();
             float lastSpeed = defaultSpeed;
@@ -78,8 +100,9 @@ namespace PathPlanning
                     UnityEngine.Debug.Log($"A* Algorithm Execution Time: {stopwatch.ElapsedMilliseconds}ms");
                     var (path, times, speeds) = ReconstructPath(previous, current, defaultSpeed);
 
-                    bool[,,] timeSpaceMatrix = GenerateTimeSpaceMatrix(graph, personalOccupancyLayer, path, times);
-                    return (path, times, speeds, timeSpaceMatrix);
+                    ReservePathOccupancy(graph, indoorSpace, personalOccupancyLayer, path, times, speeds, robotId, newPlanId);
+
+                    return (path, times, speeds, newPlanId);
                 }
 
                 foreach (var neighborConnection in current.Children)
@@ -94,29 +117,42 @@ namespace PathPlanning
                     float timeToReachNeighbor = distance / currentSpeed;
                     float arrivalTimeAtNeighbor = timeAtNode[current] + timeToReachNeighbor;
 
-                    bool isOccupiedInPersonalOccupancyLayer = personalOccupancyLayer.IsOccupied(neighborConnection, arrivalTimeAtNeighbor);
-                    bool isOccupiedInGlobalOccupancyLayer = globalOccupancyLayer.IsOccupied(neighborConnection, arrivalTimeAtNeighbor);
-                    bool isOccupied = isOccupiedInPersonalOccupancyLayer || isOccupiedInGlobalOccupancyLayer;
-
-                    float occupancyPenalty = isOccupied ? float.PositiveInfinity : 0f;
-
-                    float tentativeGScore = gScore[current] + (distance / currentSpeed) + occupancyPenalty;
-
-                    if (tentativeGScore < gScore[neighbor])
+                    CellSpace neighborCellSpace = indoorSpace.GetCellSpaceFromConnectionPoint(neighborConnection);
+                    if (neighborCellSpace != null)
                     {
-                        previous[neighbor] = new Tuple<RoutePoint, float, float>(current, currentSpeed, arrivalTimeAtNeighbor);
-                        gScore[neighbor] = tentativeGScore;
-                        timeAtNode[neighbor] = arrivalTimeAtNeighbor;
-                        float f = gScore[neighbor] + HeuristicCostEstimate(personalOccupancyLayer, neighbor, endPosition, currentSpeed, searchMethod);
-                        fScore[neighbor] = f;
-                        openSet.Enqueue(neighbor, f);
-                        lastSpeed = currentSpeed;
+                        var personalOccupancies = personalOccupancyLayer.GetOccupancies(
+                            neighborCellSpace.Id, 
+                            arrivalTimeAtNeighbor, 
+                            arrivalTimeAtNeighbor + timeToReachNeighbor
+                        );
+                        
+                        var globalOccupancies = globalOccupancyLayer.GetOccupancies(
+                            neighborCellSpace.Id,
+                            arrivalTimeAtNeighbor,
+                            arrivalTimeAtNeighbor + timeToReachNeighbor
+                        );
+                        bool isOccupied = personalOccupancies.Any() || globalOccupancies.Any();
+
+                        float occupancyPenalty = isOccupied ? float.PositiveInfinity : 0f;
+
+                        float tentativeGScore = gScore[current] + (distance / currentSpeed) + occupancyPenalty;
+
+                        if (tentativeGScore < gScore[neighbor])
+                        {
+                            previous[neighbor] = new Tuple<RoutePoint, float, float>(current, currentSpeed, arrivalTimeAtNeighbor);
+                            gScore[neighbor] = tentativeGScore;
+                            timeAtNode[neighbor] = arrivalTimeAtNeighbor;
+                            float f = gScore[neighbor] + HeuristicCostEstimate(personalOccupancyLayer, neighbor, endPosition, currentSpeed, searchMethod);
+                            fScore[neighbor] = f;
+                            openSet.Enqueue(neighbor, f);
+                            lastSpeed = currentSpeed;
+                        }
                     }
                 }
             }
 
             UnityEngine.Debug.LogWarning($"No path found from {startPosition.ConnectionPoint.Id} to {endPosition.ConnectionPoint.Id}");
-            return (new List<ConnectionPoint>(), new List<float>(), new List<float>(), new bool[0, 0, 0]);
+            return (new List<ConnectionPoint>(), new List<float>(), new List<float>(), null);
         }
 
         private static (List<ConnectionPoint> path, List<float> times, List<float> speeds) ReconstructPath(
@@ -167,25 +203,42 @@ namespace PathPlanning
             return (path, times, speeds);
         }
 
-        private static bool[,,] GenerateTimeSpaceMatrix(Graph graph, DynamicOccupancyLayer personalOccupancyLayer, List<ConnectionPoint> path, List<float> times)
+        private static void ClearUnusedReservations(
+            DynamicOccupancyLayer personalOccupancyLayer, 
+            string robotId,
+            string planId, 
+            float currentTime)
         {
-            int width = (int)personalOccupancyLayer.Width;
-            int length = (int)personalOccupancyLayer.Length;
-            int timeSteps = personalOccupancyLayer.TimeSteps;
-            bool[,,] matrix = new bool[width, length, timeSteps];
+            personalOccupancyLayer.ClearPlannedOccupancy(robotId, planId, currentTime);
+        }
 
-            for (int i = 0; i < path.Count; i++)
+        private static void ReservePathOccupancy(
+            Graph graph,
+            IndoorSpace indoorSpace,
+            DynamicOccupancyLayer personalOccupancyLayer,
+            List<ConnectionPoint> path,
+            List<float> times,
+            List<float> speeds, 
+            string robotId, 
+            string newPlanId)
+        {
+            for (int i = 0; i < path.Count - 1; i++)
             {
-                ConnectionPoint connectionPoint = path[i];
-                float time = times[i];
-
-                if (time >= personalOccupancyLayer.GetStartTime() && time <= personalOccupancyLayer.GetEndTime())
+                CellSpace currentCellSpace = indoorSpace.GetCellSpaceFromConnectionPoint(path[i]);
+                if (currentCellSpace != null)
                 {
-                    personalOccupancyLayer.SetOccupancy(connectionPoint, time, true);
+                    float startTime = times[i];
+                    float endTime = times[i + 1];
+                    
+                    personalOccupancyLayer.SetPlannedOccupancy(
+                        currentCellSpace.Id,
+                        startTime,
+                        endTime,
+                        robotId, 
+                        newPlanId
+                    );
                 }
             }
-
-            return matrix;
         }
 
         private static float HeuristicCostEstimate(DynamicOccupancyLayer personalOccupancyLayer, RoutePoint a, RoutePoint b, float speed, SearchMethod searchMethod)

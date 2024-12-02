@@ -100,10 +100,13 @@ MonoBehaviour:
   selectedAlgorithm: 2
   selectedSearchMethod: 0
   baseDetectionRadius: 0.5
-  collisionAngleThreshold: 60
-  defaultSpeed: 5
+  emergencyStopDistance: 0.2
+  defaultSpeed: 2
   maxAcceleration: 2
   maxDeceleration: 5
   MaxOrder: 20
-  maxPathDeviationDistance: 0.5
+  pathLineRenderer: {fileID: 0}
+  lineWidth: 0.1
+  pathColor: {r: 1, g: 0.92156863, b: 0.015686275, a: 1}
+  pathDeviationDistanceThreshold: 1
   pathCheckInterval: 0.2
