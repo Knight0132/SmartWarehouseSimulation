@@ -96,7 +96,7 @@ namespace CentralControl.RobotControl
         # region path deviation parameters
         public float pathDeviationDistanceThreshold = 1.0f;
         public float pathCheckInterval = 0.5f;
-        private static readonly float maxPathDeviationDistance = Mathf.Sqrt(5f) / 2f;
+        private static readonly float maxPathDeviationDistance = Mathf.Sqrt(17f) / 2f;
         # endregion
 
         # region robot movement parameters 
@@ -132,7 +132,6 @@ namespace CentralControl.RobotControl
         {
             statusCheckCoroutine = StartCoroutine(PeriodicStatusCheck());
             StartCoroutine(CheckPathDeviation());
-            cellSpaceEntryTimes = new Dictionary<string, float>();
         }
 
         private void Update()
@@ -184,6 +183,8 @@ namespace CentralControl.RobotControl
             currentStates.Clear();
             ordersQueue = new ConcurrentQueue<Order>();
 
+            cellSpaceEntryTimes = new Dictionary<string, float>();
+            lastCellSpace = null;
             currentPosition = transform.position;
             currentPath = new List<ConnectionPoint>();
             currentPathIndex = 0;
@@ -397,9 +398,19 @@ namespace CentralControl.RobotControl
         # region moving module
         private IEnumerator MoveAlongPath(List<ConnectionPoint> path, List<float> times, List<float>speeds, float executionTime, Vector3 finalTargetPosition)
         {
-            if (path == null || path.Count == 0)
+            if (path == null || times == null || speeds == null || 
+                path.Count == 0 || times.Count == 0 || speeds.Count == 0)
             {
+                Debug.LogError($"Robot {Id}: Invalid path data received. Path count: {path?.Count}, Times count: {times?.Count}, Speeds count: {speeds?.Count}");
                 StartCoroutine(ReplanPath());
+                yield break;
+            }
+
+            if (path.Count != times.Count || path.Count != speeds.Count)
+            {
+                Debug.LogError($"Robot {Id}: Mismatched array lengths - Path: {path.Count}, Times: {times.Count}, Speeds: {speeds.Count}");
+                StartCoroutine(ReplanPath());
+                yield break;
             }
             
             VisualizePath(path);
@@ -570,8 +581,6 @@ namespace CentralControl.RobotControl
                 return;
             }
 
-            Debug.Log($"Robot {Id}: Checking intersection. Current state: isDWAEnabled={isDWAEnabled}, " +
-                    $"Position={transform.position}, PathIndex={currentPathIndex}/{currentPath.Count}");
 
             // check if the robot is approaching an intersection entry point or has reached an intersection exit point
             bool shouldActivateDWA = CheckUpcomingIntersectionEntry();
@@ -593,11 +602,6 @@ namespace CentralControl.RobotControl
                 isIntersectionControlled = false;
                 lastDWAStateChangeTime = Time.time;
             }
-            else
-            {
-                Debug.Log($"Robot {Id}: No change in DWA state. shouldActivate={shouldActivateDWA}, " +
-                        $"shouldDeactivate={shouldDeactivateDWA}, isDWAEnabled={isDWAEnabled}");
-            }
         }
 
         private bool CheckUpcomingIntersectionEntry()
@@ -609,7 +613,6 @@ namespace CentralControl.RobotControl
             {
                 if (intersection.Contains(robotPosition))
                 {
-                    Debug.Log($"Robot {Id}: Already in intersection area");
                     return true;
                 }
             }
@@ -650,7 +653,6 @@ namespace CentralControl.RobotControl
                 {
                     if (intersection.ExitPoints.Any(ep => ep.Id == currentPoint.Id))
                     {
-                        Debug.Log($"Robot {Id}: Reached intersection exit point and outside intersection area");
                         return true;
                     }
                 }
@@ -674,7 +676,6 @@ namespace CentralControl.RobotControl
                 dwaPlanner.VelocityWeight = 0.3f;
                 dwaPlanner.ObstacleWeight = 0.25f;
                 lastDWAStateChangeTime = Time.time;
-                Debug.Log($"Robot {Id}: DWA enabled");
             }
         }
 
@@ -695,7 +696,6 @@ namespace CentralControl.RobotControl
                 dwaPlanner.VelocityWeight = 0.2f;
                 dwaPlanner.ObstacleWeight = 0.1f;
                 lastDWAStateChangeTime = Time.time;
-                Debug.Log($"Robot {Id}: DWA disabled");
             }
         }
         # endregion
@@ -1024,9 +1024,41 @@ namespace CentralControl.RobotControl
         {
             CellSpace currentCellSpace = indoorSpace.GetCellSpaceFromCoordinates(transform.position);
             
-            if (currentCellSpace != null && lastCellSpace != null && 
-                currentCellSpace.Id == lastCellSpace.Id && 
-                cellSpaceEntryTimes.TryGetValue(currentCellSpace.Id, out float entryTime))
+            if (currentCellSpace == null)
+            {
+                Debug.Log($"Robot {Id}: Currently in transition between CellSpaces");
+                return;
+            }
+
+            if (lastCellSpace == null)
+            {
+                Debug.Log($"Robot {Id}: First time entering a CellSpace");
+                cellSpaceEntryTimes[currentCellSpace.Id] = currentTime;
+                lastCellSpace = currentCellSpace;
+                return;
+            }
+
+            if (currentCellSpace.Id != lastCellSpace.Id)
+            {
+                Debug.Log($"Robot {Id}: Transitioning from CellSpace {lastCellSpace.Id} to {currentCellSpace.Id}");
+                if (cellSpaceEntryTimes.TryGetValue(lastCellSpace.Id, out float oldEntryTime))
+                {
+                    personalOccupancyLayer.SetPlannedOccupancy(
+                        lastCellSpace.Id,
+                        oldEntryTime,
+                        currentTime,
+                        Id.ToString(),
+                        "RealTimeMovement"
+                    );
+                    cellSpaceEntryTimes.Remove(lastCellSpace.Id);
+                }
+                
+                cellSpaceEntryTimes[currentCellSpace.Id] = currentTime;
+                lastCellSpace = currentCellSpace;
+                return;
+            }
+
+            if (cellSpaceEntryTimes.TryGetValue(currentCellSpace.Id, out float entryTime))
             {
                 personalOccupancyLayer.SetPlannedOccupancy(
                     currentCellSpace.Id,
@@ -1035,10 +1067,6 @@ namespace CentralControl.RobotControl
                     Id.ToString(),
                     "RealTimeMovement"
                 );
-            }
-            else
-            {
-                Debug.LogWarning($"Robot {Id}: Cannot update time-space matrix - invalid state");
             }
         }
 

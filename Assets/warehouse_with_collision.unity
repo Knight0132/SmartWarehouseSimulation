@@ -329,7 +329,7 @@ MonoBehaviour:
   selectedSearchMethod: 0
   baseDetectionRadius: 0.7
   emergencyStopDistance: 0.2
-  defaultSpeed: 5
+  defaultSpeed: 3
   maxAcceleration: 2
   maxDeceleration: 3
   MaxOrder: 20
@@ -610,7 +610,7 @@ MonoBehaviour:
   mapWidth: 25
   mapLength: 20
   wallHeight: 2
-  wallThickness: 0.5
+  wallThickness: 0
 --- !u!4 &1477745117
 Transform:
   m_ObjectHideFlags: 0

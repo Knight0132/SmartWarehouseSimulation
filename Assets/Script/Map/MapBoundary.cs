@@ -9,7 +9,7 @@ namespace Map
         public float mapWidth = 25f;
         public float mapLength = 20f;
         public float wallHeight = 5f;
-        public float wallThickness = 1f;
+        public float wallThickness = 0f;
 
         public void Initialize()
         {
@@ -36,10 +36,8 @@ namespace Map
             wall.transform.localScale = scale;
 
             Renderer renderer = wall.GetComponent<Renderer>();
-            if (renderer != null)
-            {
-                renderer.enabled = false;
-            }
+
+            wall.GetComponent<MeshRenderer>().material.color = Color.black;
 
             Rigidbody rb = wall.AddComponent<Rigidbody>();
             rb.isKinematic = true;
